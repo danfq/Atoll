@@ -8,6 +8,10 @@
 
 ---
 
+## Demonstration
+
+![DynamicIsland Demo](https://github.com/Ebullioscopic/DynamicIsland/blob/main/dynamic-island-demo.gif)
+
 <details open>
 <summary>📑 Table of Contents</summary>
 
