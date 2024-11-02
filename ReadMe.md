@@ -6,7 +6,9 @@
 
 > **DynamicIsland** enhances the notch on your MacBook M3 Pro with interactive, customizable widgets, transforming it into a dynamic control center for multitasking, notifications, and more.
 
----
+## Preview
+
+![DynamicIsland Preview](https://github.com/Ebullioscopic/DynamicIsland/blob/main/dynamic-island-preview.jpeg)
 
 ## Demonstration
 
