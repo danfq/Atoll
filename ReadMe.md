@@ -1,37 +1,25 @@
-Here’s a sample README template for your **Dynamic Island** app project on GitHub. It is organized with detailed sections, a collapsible Table of Contents, and instructions to help users and contributors understand and navigate the project.
-
----
-
 # DynamicIsland
 
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/ebullioscopic/dynamic-island-logo.png" alt="DynamicIsland Logo" width="200"/>
+  <img src="https://github.com/Ebullioscopic/DynamicIsland/blob/main/dynamic-island.jpeg" alt="DynamicIsland Logo" width="200"/>
 </p>
 
-> **DynamicIsland** is a macOS app designed for MacBook M3 Pro, crafted to enhance your notch's usability with a dynamic, interactive control center similar to iOS’s Dynamic Island. Built with SwiftUI, Objective-C, and Makefile, this app transforms the notch into a vibrant information hub.
-
-## 🚀 Features
-
-- **Music Controls**: Easily manage playback, view album art, and enjoy a music visualizer.
-- **Battery Indicator**: Track battery status with customizable visuals.
-- **Calendar Notifications**: Integrate calendar reminders and display event updates.
-- **Weather Widget**: Get real-time weather updates directly in the notch.
-- **Multitasking Tools**: Switch between apps, control brightness, and more.
-- **Highly Customizable**: Tailor the display, gestures, and animations to your preferences.
+> **DynamicIsland** enhances the notch on your MacBook M3 Pro with interactive, customizable widgets, transforming it into a dynamic control center for multitasking, notifications, and more.
 
 ---
 
 <details open>
 <summary>📑 Table of Contents</summary>
 
+- [Features](#features)
+- [Demo](#demo)
 - [Getting Started](#getting-started)
-- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
 - [Usage](#usage)
   - [Basic Controls](#basic-controls)
   - [Customization Options](#customization-options)
 - [Configuration](#configuration)
-  - [Theme Settings](#theme-settings)
-  - [Gesture Controls](#gesture-controls)
 - [Roadmap](#roadmap)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -43,111 +31,148 @@ Here’s a sample README template for your **Dynamic Island** app project on Git
 
 ---
 
-## Getting Started
+## 🌟 Features
 
-To get started with **DynamicIsland**, ensure you meet the following prerequisites and have the required dependencies installed.
+- **Music Controls**: Play, pause, and skip tracks from the notch area.
+- **Battery Status**: Real-time battery percentage and low-battery alerts.
+- **Calendar Reminders**: Displays upcoming events directly in the notch.
+- **Weather Updates**: Get current weather conditions at a glance.
+- **Multitasking Tools**: Quickly switch between open applications.
+- **Customizable Themes**: Light, dark, and custom color themes.
+- **Gesture Support**: Use gestures for quick actions.
+
+## 🎥 Demo
+
+Check out a quick demo of DynamicIsland in action:
+
+![DynamicIsland Demo](https://github.com/Ebullioscopic/DynamicIsland/raw/main/demo.gif)
+
+---
+
+## 🚀 Getting Started
+
+These instructions will get you a copy of **DynamicIsland** up and running on your local machine.
 
 ### Prerequisites
 
-- macOS Ventura 14.2 or later
-- Xcode 15.0 or later
-- A MacBook M3 Pro (or later models with a notch display)
+- **macOS Ventura 14.2** or later.
+- **Xcode 15.0** or later.
+- **SwiftUI** and **Objective-C** frameworks installed.
+- **Make** installed for build automation.
 
-### Dependencies
+### Installation
 
-- **SwiftUI**: For building the UI components
-- **Objective-C**: Used for interoperability with legacy macOS APIs
-- **Makefile**: For build automation
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/Ebullioscopic/DynamicIsland.git
+   cd DynamicIsland
+   ```
 
----
+2. **Install Dependencies**
+   Make sure you have all required libraries and frameworks installed. Use Homebrew for some dependencies if needed:
+   ```bash
+   brew install make
+   ```
 
-## Installation
+3. **Build and Run the Project**
+   Open the project in Xcode, select your target device, and run:
+   ```bash
+   open DynamicIsland.xcodeproj
+   ```
 
-1. **Clone the repository**:
-    ```bash
-    git clone https://github.com/Ebullioscopic/DynamicIsland.git
-    cd DynamicIsland
-    ```
-
-2. **Open the Project in Xcode**:
-    ```bash
-    open DynamicIsland.xcodeproj
-    ```
-
-3. **Build and Run**:
-   - Select your target device (MacBook).
-   - Press `Cmd + R` to run the app and see the magic in action.
-
-4. **Privacy & Security Settings**:
-   - If prompted, go to **Settings > Privacy & Security** and allow the app.
+4. **Run the App in Xcode**
+   Build and run the app from Xcode by pressing `Cmd + R`:
+   - If prompted by macOS, allow permissions for **Privacy & Security**.
 
 ---
 
-## Usage
+## 📖 Usage
 
-After launching, **DynamicIsland** will integrate with your MacBook’s notch. The following subsections cover basic controls, customization, and gesture options.
+Once **DynamicIsland** is installed and running, it will display widgets and controls in the MacBook's notch area. Here are some usage tips and customization options.
 
 ### Basic Controls
 
-- **Music Player**: Hover over the notch to access music controls (play, pause, skip).
-- **Battery Status**: Displays current battery percentage, with low-battery alerts.
-- **Weather Widget**: Shows real-time weather for your location.
-- **Multitasking**: Quickly switch between open applications.
+- **Music Controls**: Hover over the notch and use on-screen buttons to control playback.
+- **Battery Status**: A battery indicator will be displayed in the notch. Low battery alerts will appear automatically.
+- **Weather Widget**: Displays current weather for your location (requires location access).
+- **App Switcher**: Swipe gestures allow you to quickly switch between open applications.
 
 ### Customization Options
 
-1. **Theme**: Choose between **light**, **dark**, and **system** modes.
-2. **Widget Settings**: Enable/disable widgets based on your preferences.
-3. **Animations**: Adjust animation speed, delay, and notch expansion effects.
-4. **Gesture Controls**: See the [Gesture Controls](#gesture-controls) section for details.
+To personalize your DynamicIsland experience:
+
+1. **Open Preferences**: Access the Preferences pane by long-pressing on the notch area.
+2. **Themes**: Choose between **light**, **dark**, or **system adaptive** themes.
+3. **Widget Settings**: Enable/disable specific widgets, adjust sizes, and set display preferences.
+4. **Gestures**: Customize swipe, tap, and long-press actions for app switching and widget controls.
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-The `config.json` file in the main directory allows you to personalize your experience further.
+Configuration settings can be found in the `config.json` file located in the root directory.
 
-### Theme Settings
+### `config.json` Example
 
-- **`theme`:** Set to `light`, `dark`, or `auto` to match system preferences.
-- **`accentColor`:** Customize the accent color for UI elements.
+```json
+{
+  "theme": "dark",
+  "batteryWidget": true,
+  "musicWidget": true,
+  "weatherWidget": true,
+  "gestureSettings": {
+    "tap": "toggleMusic",
+    "swipeLeft": "previousApp",
+    "swipeRight": "nextApp",
+    "longPress": "openSettings"
+  }
+}
+```
 
-### Gesture Controls
-
-Define gestures to control various app functions.
-
-- **Tap Gesture**: Toggles music controls.
-- **Swipe Left/Right**: Switches between widgets (music, battery, calendar, etc.).
-- **Long Press**: Opens settings.
-
----
-
-## Roadmap
-
-This project is continually evolving. Here are some planned features and improvements:
-
-- [ ] **Expanded App Integration**: Support for third-party app notifications.
-- [ ] **Customizable App Shortcuts**: Add quick app launchers.
-- [ ] **Enhanced Calendar Integration**: View entire week schedules.
-- [ ] **Improved Battery Notifications**: Custom low-battery alerts and battery health info.
+- **`theme`**: Options are `"light"`, `"dark"`, or `"auto"`.
+- **`batteryWidget`, `musicWidget`, `weatherWidget`**: Toggle visibility for each widget.
+- **`gestureSettings`**: Assign actions to tap, swipe, and long-press gestures.
 
 ---
 
-## Troubleshooting
+## 🚧 Roadmap
 
-Here are some common issues and solutions:
+Planned updates for future releases:
 
-- **App fails to start**: Ensure you’re running macOS 14.2 or later.
-- **No permissions prompt**: Go to **System Preferences > Security & Privacy** and manually enable **DynamicIsland**.
-- **Widgets don’t display correctly**: Restart the app and verify your macOS display settings.
+- [ ] **Advanced Calendar Integration**: Add support for weekly and monthly views.
+- [ ] **Customizable Shortcuts**: Create custom app shortcuts.
+- [ ] **Additional Widget Support**: Add widgets for finance, fitness, and more.
+- [ ] **Voice Commands**: Enable Siri shortcuts for quick commands.
+- [ ] **Animation Improvements**: Smooth animations for a more polished UI.
 
 ---
 
-## Contributing
+## 🔧 Troubleshooting
 
-We welcome contributions from the community! Please follow the steps below:
+### Common Issues
 
-1. **Fork the Repository**: Click the "Fork" button at the top of the GitHub page.
+- **Permissions**: Go to **System Preferences > Security & Privacy** to manually enable permissions if the app fails to start.
+- **Widgets Not Displaying**: Ensure your `config.json` file has valid settings, then restart the app.
+- **Build Errors in Xcode**: Run `make clean` to reset the project, then re-build.
+
+### Useful Commands
+
+- **Clean Build Files**:
+  ```bash
+  make clean
+  ```
+- **Reset Configurations**:
+  ```bash
+  rm config.json && cp config.default.json config.json
+  ```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from the community! Follow the steps below to contribute:
+
+1. **Fork the repository**.
 2. **Clone Your Fork**:
     ```bash
     git clone https://github.com/yourusername/DynamicIsland.git
@@ -157,37 +182,38 @@ We welcome contributions from the community! Please follow the steps below:
     ```bash
     git checkout -b feature/YourFeatureName
     ```
-4. **Make Your Changes** and commit them:
+4. **Make Your Changes** and **Commit**:
     ```bash
-    git commit -m "Add your message here"
+    git commit -m "Added new feature"
     ```
 5. **Push to Your Fork**:
     ```bash
     git push origin feature/YourFeatureName
     ```
-6. **Submit a Pull Request**: Go to the original repository and click "New Pull Request".
+6. **Create a Pull Request**: Head to the original repository and open a pull request.
 
-For major changes, please open an issue first to discuss what you would like to change.
-
----
-
-## License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+For major changes, please open an issue first to discuss what you’d like to change.
 
 ---
 
-## Acknowledgments
+## 📜 License
 
-Special thanks to the **Boring Notch** project for inspiration and the broader open-source community for continuous support.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ---
 
-## Contributors
+## 🏆 Acknowledgments
+
+Special thanks to:
+- **Apple Design Principles** for inspiration.
+- **Boring Notch** project for initial ideas.
+
+---
+
+## 👥 Contributors
 
 <table>
   <tr>
     <td align="center"><a href="https://github.com/Ebullioscopic"><img src="https://github.com/Ebullioscopic.png" width="100px;" alt=""/><br /><sub><b>Ebullioscopic</b></sub></a><br />Creator</td>
   </tr>
 </table>
-
