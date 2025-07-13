@@ -7,6 +7,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Dynamic Island uses AppleScripts to control Spotify and Apple Music</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Show calender events inside the notch</string>
 	<key>SUEnableDownloaderService</key>
@@ -16,7 +18,7 @@
 	<key>SUFeedURL</key>
 	<string>https://TheBoredTeam.github.io/boring.notch/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>LlPWpDWaN5DLDCuB45z9xwxVXkdIqJhOT0eP5CiMsto=</string>
+	<string>B1Y47t8C/v8ImurYA+9arEsuCrpxwJSviekiflMElbI=</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict/>

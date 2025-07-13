@@ -4,6 +4,9 @@
     " – %lld" : {
 
     },
+    "'Now Playing' was the only option on previous versions and works with all media apps." : {
+
+    },
     "(%@)" : {
       "localizations" : {
         "en" : {
@@ -41,9 +44,6 @@
     "• New feature 1" : {
 
     },
-    "⚠️ Important" : {
-
-    },
     "About" : {
       "localizations" : {
         "en" : {
@@ -64,6 +64,9 @@
         }
       }
     },
+    "Access Denied" : {
+
+    },
     "Activate" : {
 
     },
@@ -73,7 +76,13 @@
     "Activation" : {
 
     },
+    "Add" : {
+
+    },
     "Add manually" : {
+
+    },
+    "Add new visualizer" : {
 
     },
     "Additional features" : {
@@ -86,6 +95,9 @@
 
     },
     "All-day" : {
+
+    },
+    "Always hide in fullscreen" : {
 
     },
     "Always show tabs" : {
@@ -119,6 +131,15 @@
           }
         }
       }
+    },
+    "Battery Information" : {
+
+    },
+    "Battery Settings" : {
+
+    },
+    "Battery Status" : {
+
     },
     "Boost your productivity with Clipboard Manager" : {
 
@@ -165,6 +186,15 @@
         }
       }
     },
+    "Buy us a coffee" : {
+
+    },
+    "Calendar" : {
+
+    },
+    "Calendar access is denied. Please enable it in System Settings." : {
+
+    },
     "Cancel" : {
 
     },
@@ -177,6 +207,9 @@
           }
         }
       }
+    },
+    "Charging on Hold: Desktop Mode" : {
+
     },
     "Check for updates" : {
       "extractionState" : "stale",
@@ -208,9 +241,6 @@
         }
       }
     },
-    "CPU" : {
-
-    },
     "Custom color" : {
       "localizations" : {
         "en" : {
@@ -224,7 +254,13 @@
     "Custom height" : {
 
     },
+    "Custom music live activity animation" : {
+
+    },
     "Custom notch size - %.0f" : {
+
+    },
+    "Custom vizualizers (Lottie)" : {
 
     },
     "Default" : {
@@ -281,9 +317,6 @@
     "Easily copy, store, and manage your most-used content. Upgrade now for advanced features like multi-item storage and quick access!" : {
 
     },
-    "Edit" : {
-
-    },
     "Edit layout" : {
 
     },
@@ -318,6 +351,9 @@
     "Enable music live activity" : {
 
     },
+    "Enable sneak peek" : {
+
+    },
     "Enhance your experience with HUDs" : {
 
     },
@@ -325,9 +361,6 @@
 
     },
     "Error" : {
-
-    },
-    "ERROR: VIEW NOT DEFINED" : {
 
     },
     "Exclude apps" : {
@@ -344,9 +377,6 @@
 
     },
     "Extensions" : {
-
-    },
-    "Fullscreen media playback detection" : {
 
     },
     "General" : {
@@ -384,16 +414,19 @@
     "Gradient" : {
 
     },
+    "Hide BoringNotch Options" : {
+
+    },
+    "Hide only when NowPlaying app is in fullscreen" : {
+
+    },
     "Hierarchical" : {
 
     },
     "High" : {
 
     },
-    "Hover over the notch after changing the height to see the effect." : {
-
-    },
-    "Hover over the notch after changing the screen to adapt the new size" : {
+    "https://github.com/th-ch/youtube-music" : {
 
     },
     "HUD style" : {
@@ -428,7 +461,13 @@
     "License key" : {
 
     },
+    "Lottie JSON URL" : {
+
+    },
     "Low" : {
+
+    },
+    "Low Power Mode" : {
 
     },
     "Made with 🫶🏻 by not so boring not.people" : {
@@ -445,6 +484,9 @@
 
     },
     "Match real notch size" : {
+
+    },
+    "Max Capacity: %lld%%" : {
 
     },
     "Media" : {
@@ -480,10 +522,10 @@
         }
       }
     },
-    "Medium" : {
+    "Media Source" : {
 
     },
-    "Memory" : {
+    "Medium" : {
 
     },
     "Menubar icon" : {
@@ -512,13 +554,25 @@
     "More" : {
 
     },
+    "Music Source" : {
+
+    },
     "muted" : {
+
+    },
+    "Name" : {
 
     },
     "Need Restart" : {
 
     },
-    "Network" : {
+    "Never hide" : {
+
+    },
+    "No custom animation available" : {
+
+    },
+    "No custom visualizer" : {
 
     },
     "No events today" : {
@@ -541,13 +595,16 @@
     "No extension installed" : {
 
     },
-    "Non-notch displays" : {
-
-    },
-    "Non-notch screen height" : {
+    "Non-notch display height" : {
 
     },
     "Notch behavior" : {
+
+    },
+    "Notch display height" : {
+
+    },
+    "Notch Height" : {
 
     },
     "OK" : {
@@ -579,6 +636,9 @@
         }
       }
     },
+    "Open System Settings" : {
+
+    },
     "Percentage" : {
       "localizations" : {
         "en" : {
@@ -588,6 +648,9 @@
           }
         }
       }
+    },
+    "Plugged In" : {
+
     },
     "Progress bar" : {
       "localizations" : {
@@ -659,6 +722,15 @@
         }
       }
     },
+    "Select Calendars" : {
+
+    },
+    "selected" : {
+
+    },
+    "Selected animation" : {
+
+    },
     "Settings" : {
       "localizations" : {
         "en" : {
@@ -685,6 +757,9 @@
           }
         }
       }
+    },
+    "Show calendar" : {
+
     },
     "Show charging indicator" : {
       "extractionState" : "stale",
@@ -722,10 +797,16 @@
     "Show on a specific display" : {
 
     },
+    "Show on all displays" : {
+
+    },
     "Slider color" : {
 
     },
     "Sneak Peek shows the media title and artist under the notch for a few seconds." : {
+
+    },
+    "Sneak Peek Style" : {
 
     },
     "Software updates" : {
@@ -737,6 +818,9 @@
           }
         }
       }
+    },
+    "Speed" : {
+
     },
     "Square" : {
 
@@ -758,14 +842,13 @@
 
     },
     "TheBoringNotch" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TheDynamicIsland"
-          }
-        }
-      }
+
+    },
+    "Time to Full Charge: %lld min" : {
+
+    },
+    "Toggle Notch Open:" : {
+
     },
     "Toggle Sneak Peek:" : {
 
@@ -786,6 +869,9 @@
 
     },
     "Upgrade to Pro" : {
+
+    },
+    "Use music visualizer spectrogram" : {
 
     },
     "Version" : {
@@ -815,6 +901,9 @@
 
     },
     "What's New" : {
+
+    },
+    "YouTube Music requires this third-party app to be installed: " : {
 
     }
   },
