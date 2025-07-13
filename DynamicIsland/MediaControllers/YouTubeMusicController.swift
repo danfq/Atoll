@@ -1,6 +1,6 @@
 //
 //  YouTubeMusicController.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created By Alexander Greco on 2025-03-30.
 //
@@ -23,7 +23,7 @@ class YouTubeMusicController: MediaControllerProtocol {
     private var cancellables = Set<AnyCancellable>()
     private var playbackInfoCancellable: AnyCancellable?
     private var isAuthenticating = false
-    private let authQueue = DispatchQueue(label: "com.boringnotch.youtubemusicauth", qos: .background)
+    private let authQueue = DispatchQueue(label: "com.dynamicisland.youtubemusicauth", qos: .background)
     
     init() {
         setupAppStateObservers()
@@ -64,7 +64,7 @@ class YouTubeMusicController: MediaControllerProtocol {
     }
     
     private func getAccessToken(completion: @escaping (Bool) -> Void) {
-        guard let url = URL(string: "\(baseURL)/auth/boringNotch") else {
+        guard let url = URL(string: "\(baseURL)/auth/dynamicIsland") else {
             completion(false)
             return
         }

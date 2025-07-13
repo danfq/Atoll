@@ -1,6 +1,6 @@
 //
 //  HoverButton.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Kraigo on 04.09.2024.
 //

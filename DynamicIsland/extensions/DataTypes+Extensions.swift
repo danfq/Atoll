@@ -1,6 +1,6 @@
     //
     //  DataTypes+Extensions.swift
-    //  boringNotch
+    //  DynamicIsland
     //
     //  Created by Harsh Vardhan  Goswami  on 27/08/24.
     //

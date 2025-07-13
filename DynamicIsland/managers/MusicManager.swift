@@ -1,6 +1,6 @@
 //
 //  MusicManager.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 03/08/24.
 //
@@ -41,7 +41,7 @@ class MusicManager: ObservableObject {
     @Published var lastUpdated: Date = .distantPast
     @Published var ignoreLastUpdated = true
     @Published var isPlayerIdle: Bool = true
-    @Published var animations: BoringAnimations = .init()
+    @Published var animations: DynamicIslandAnimations = .init()
     @Published var avgColor: NSColor = .white
     @Published var bundleIdentifier: String? = nil
     @Published var songDuration: TimeInterval = 0

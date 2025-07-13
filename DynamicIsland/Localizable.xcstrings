@@ -156,6 +156,7 @@
       }
     },
     "boring.notch" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -314,6 +315,9 @@
     "Drop files here" : {
 
     },
+    "dynamic.island" : {
+
+    },
     "Easily copy, store, and manage your most-used content. Upgrade now for advanced features like multi-item storage and quick access!" : {
 
     },
@@ -414,7 +418,7 @@
     "Gradient" : {
 
     },
-    "Hide BoringNotch Options" : {
+    "Hide DynamicIsland Options" : {
 
     },
     "Hide only when NowPlaying app is in fullscreen" : {
@@ -471,6 +475,7 @@
 
     },
     "Made with 🫶🏻 by not so boring not.people" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -479,6 +484,9 @@
           }
         }
       }
+    },
+    "Made with 🫶🏻 by the DynamicIsland team" : {
+
     },
     "Match menubar height" : {
 
@@ -705,7 +713,7 @@
     "Restart" : {
 
     },
-    "Restart Boring Notch" : {
+    "Restart Dynamic Island" : {
 
     },
     "Running" : {
@@ -841,7 +849,7 @@
     "System features" : {
 
     },
-    "TheBoringNotch" : {
+    "TheDynamicIsland" : {
 
     },
     "Time to Full Charge: %lld min" : {

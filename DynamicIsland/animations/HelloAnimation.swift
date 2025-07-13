@@ -4,7 +4,7 @@
 //
 //  Created by Harsh Vardhan  Goswami  on 04/08/24.
 // HelloAnimation.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 08/08/24.
 //

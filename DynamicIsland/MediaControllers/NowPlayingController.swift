@@ -1,6 +1,6 @@
 //
 //  NowPlayingController.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Alexander on 2025-03-29.
 //

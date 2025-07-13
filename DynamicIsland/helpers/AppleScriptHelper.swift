@@ -1,6 +1,6 @@
 //
 //  AppleScriptHelper.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Alexander Greco on 2025-03-29.
 //

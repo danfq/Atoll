@@ -3,8 +3,8 @@
 //  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 04/08/24.
-// BoringExtensionManager.swift
-//  boringNotch
+// DynamicIslandExtensionManager.swift
+//  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 07/09/24.
 //

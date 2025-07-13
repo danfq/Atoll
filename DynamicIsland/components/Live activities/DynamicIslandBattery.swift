@@ -11,7 +11,7 @@ struct BatteryView: View {
     var batteryWidth: CGFloat = 26
     var isForNotification: Bool
 
-    var animationStyle: BoringAnimations = BoringAnimations()
+    var animationStyle: DynamicIslandAnimations = DynamicIslandAnimations()
 
     var icon: String = "battery.0"
 

@@ -1,6 +1,6 @@
 //
 //  NotchSpaceManager.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Alexander Greco on 2024-10-27.
 //

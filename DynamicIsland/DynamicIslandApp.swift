@@ -1,6 +1,6 @@
 //
 //  DynamicIslandApp.swift
-//  DynamicIsland
+//  DynamicIslandApp
 //
 //  Created by Harsh Vardhan  Goswami  on 02/08/24.
 //

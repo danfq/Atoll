@@ -1,6 +1,6 @@
 //
-//  BoringCalender.swift
-//  boringNotch
+//  DynamicIslandCalendar.swift
+//  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 08/09/24.
 //

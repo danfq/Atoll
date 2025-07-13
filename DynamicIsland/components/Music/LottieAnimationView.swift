@@ -1,6 +1,6 @@
 //
 //  LottieAnimationView.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Richard Kunkli on 2024. 10. 29..
 //

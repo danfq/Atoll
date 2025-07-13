@@ -3,8 +3,8 @@
 //  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 04/08/24.
-// BoringSystemTiles.swift
-//  boringNotch
+// DynamicIslandSystemTiles.swift
+//  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 16/08/24.
 //

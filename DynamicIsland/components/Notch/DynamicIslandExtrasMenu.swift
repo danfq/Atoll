@@ -1,13 +1,17 @@
 //
-//  BoringExtrasMenu.swift
-//  boringNotch
+//  DynamicIslandExtrasMenu.swift
+//  DynamicIsland
+//
+//  Created by Harsh Vardhan  Goswami  on 02/08/24.
+// DynamicIslandExtrasMenu.swift
+//  DynamicIsland
 //
 //  Created by Harsh Vardhan  Goswami  on 04/08/24.
 //
 
 import SwiftUI
 
-struct BoringLargeButtons: View {
+struct DynamicIslandLargeButtons: View {
     var action: () -> Void
     var icon: Image
     var title: String
@@ -27,7 +31,7 @@ struct BoringLargeButtons: View {
     }
 }
 
-struct BoringExtrasMenu : View {
+struct DynamicIslandExtrasMenu : View {
     @ObservedObject var vm: DynamicIslandViewModel
     
     var body: some View {
@@ -41,7 +45,7 @@ struct BoringExtrasMenu : View {
     }
     
     var github: some View {
-        BoringLargeButtons(
+        DynamicIslandLargeButtons(
             action: {
                 NSWorkspace.shared.open(productPage)
             },
@@ -51,7 +55,7 @@ struct BoringExtrasMenu : View {
     }
     
     var donate: some View {
-        BoringLargeButtons(
+        DynamicIslandLargeButtons(
             action: {
                 NSWorkspace.shared.open(sponsorPage)
             },
@@ -75,7 +79,7 @@ struct BoringExtrasMenu : View {
     }
     
     var hide: some View {
-        BoringLargeButtons(
+        DynamicIslandLargeButtons(
             action: {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                     //vm.openMusic()
@@ -87,7 +91,7 @@ struct BoringExtrasMenu : View {
     }
     
     var close: some View {
-        BoringLargeButtons(
+        DynamicIslandLargeButtons(
             action: {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -103,5 +107,5 @@ struct BoringExtrasMenu : View {
 
 
 #Preview {
-    BoringExtrasMenu(vm: .init())
+    DynamicIslandExtrasMenu(vm: .init())
 }

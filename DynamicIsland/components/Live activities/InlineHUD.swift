@@ -1,6 +1,6 @@
 //
 //  InlineHUDs.swift
-//  boringNotch
+//  DynamicIsland
 //
 //  Created by Richard Kunkli on 14/09/2024.
 //
