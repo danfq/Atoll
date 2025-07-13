@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     " – %lld" : {
 
     },
@@ -55,6 +58,7 @@
       }
     },
     "Accent color" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -95,6 +99,9 @@
 
     },
     "All-day" : {
+
+    },
+    "Allow Access" : {
 
     },
     "Always hide in fullscreen" : {
@@ -226,6 +233,9 @@
     "Check for Updates…" : {
 
     },
+    "Choose a Music Source" : {
+
+    },
     "Circle" : {
 
     },
@@ -242,7 +252,11 @@
         }
       }
     },
+    "Continue" : {
+
+    },
     "Custom color" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -262,6 +276,9 @@
 
     },
     "Custom vizualizers (Lottie)" : {
+
+    },
+    "Customize in Settings" : {
 
     },
     "Default" : {
@@ -313,6 +330,9 @@
       }
     },
     "Drop files here" : {
+
+    },
+    "Dynamic Island" : {
 
     },
     "dynamic.island" : {
@@ -381,6 +401,9 @@
 
     },
     "Extensions" : {
+
+    },
+    "Finish" : {
 
     },
     "General" : {
@@ -475,7 +498,6 @@
 
     },
     "Made with 🫶🏻 by not so boring not.people" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -484,9 +506,6 @@
           }
         }
       }
-    },
-    "Made with 🫶🏻 by the DynamicIsland team" : {
-
     },
     "Match menubar height" : {
 
@@ -606,6 +625,9 @@
     "Non-notch display height" : {
 
     },
+    "Not Now" : {
+
+    },
     "Notch behavior" : {
 
     },
@@ -616,9 +638,6 @@
 
     },
     "OK" : {
-
-    },
-    "Onboarding" : {
 
     },
     "One or more files failed to load" : {
@@ -731,6 +750,9 @@
       }
     },
     "Select Calendars" : {
+
+    },
+    "Select the music source you want to use. You can change this later in the app settings." : {
 
     },
     "selected" : {
@@ -902,13 +924,19 @@
         }
       }
     },
+    "View on GitHub: th-ch/youtube-music" : {
+
+    },
     "Welcome" : {
 
     },
-    "Welcome window" : {
+    "What's New" : {
 
     },
-    "What's New" : {
+    "You can now enjoy the app. If you want to tweak things further, you can always visit the settings." : {
+
+    },
+    "You're All Set!" : {
 
     },
     "YouTube Music requires this third-party app to be installed: " : {

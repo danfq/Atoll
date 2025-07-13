@@ -3,7 +3,7 @@
 //  DynamicIsland
 //
 //  Created by Hugo Persson on 2024-08-18.
-//  Modified by Harsh Vardhan Goswami & Richard Kunkli
+//  Modified by Harsh Vardhan Goswami & Richard Kunkli & Mustafa Ramadan
 //
 
 import Combine
@@ -179,11 +179,11 @@ struct MusicControlsView: View {
 
 struct NotchHomeView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
-    @EnvironmentObject var webcamManager: WebcamManager
+    @ObservedObject var webcamManager = WebcamManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     let albumArtNamespace: Namespace.ID
-
+    
     var body: some View {
         Group {
             if !coordinator.firstLaunch {
@@ -196,16 +196,18 @@ struct NotchHomeView: View {
     private var mainContent: some View {
         HStack(alignment: .top, spacing: 20) {
             MusicPlayerView(albumArtNamespace: albumArtNamespace)
-
+            
             if Defaults[.showCalendar] {
                 CalendarView()
-                .onHover { isHovering in
-                    vm.isHoveringCalendar = isHovering
-                }
-                .environmentObject(vm)
+                    .onHover { isHovering in
+                        vm.isHoveringCalendar = isHovering
+                    }
+                    .environmentObject(vm)
             }
-
-            if Defaults[.showMirror] && webcamManager.cameraAvailable {
+            
+            if Defaults[.showMirror],
+               webcamManager.cameraAvailable,
+               vm.notchState == .open {
                 CameraPreviewView(webcamManager: webcamManager)
                     .scaledToFit()
                     .opacity(vm.notchState == .closed ? 0 : 1)
@@ -249,7 +251,7 @@ struct MusicSliderView: View {
                 range: 0 ... duration,
                 color: Defaults[.sliderColor] == SliderColorEnum.albumArt ? Color(
                     nsColor: color
-                ).ensureMinimumBrightness(factor: 0.8) : Defaults[.sliderColor] == SliderColorEnum.accent ? Defaults[.accentColor] : .white,
+                ).ensureMinimumBrightness(factor: 0.8) : Defaults[.sliderColor] == SliderColorEnum.accent ? .accentColor : .white,
                 dragging: $dragging,
                 lastDragged: $lastDragged,
                 onValueChange: onValueChange
@@ -336,7 +338,8 @@ struct CustomSlider: View {
 }
 
 #Preview {
-    NotchHomeView(albumArtNamespace: Namespace().wrappedValue)
-        .environmentObject(DynamicIslandViewModel())
-        .environmentObject(WebcamManager())
+    NotchHomeView(
+        albumArtNamespace: Namespace().wrappedValue
+    )
+    .environmentObject(DynamicIslandViewModel())
 }

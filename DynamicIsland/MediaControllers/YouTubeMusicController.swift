@@ -2,7 +2,7 @@
 //  YouTubeMusicController.swift
 //  DynamicIsland
 //
-//  Created By Alexander Greco on 2025-03-30.
+//  Created By Alexander on 2025-03-30.
 //
 
 import Foundation
@@ -64,7 +64,7 @@ class YouTubeMusicController: MediaControllerProtocol {
     }
     
     private func getAccessToken(completion: @escaping (Bool) -> Void) {
-        guard let url = URL(string: "\(baseURL)/auth/dynamicIsland") else {
+        guard let url = URL(string: "\(baseURL)/auth/DynamicIsland") else {
             completion(false)
             return
         }
@@ -80,7 +80,7 @@ class YouTubeMusicController: MediaControllerProtocol {
             .receive(on: DispatchQueue.main)
             .sink(receiveCompletion: { completionStatus in
                 switch completionStatus {
-                case .failure(let error):
+                case .failure(_):
                     completion(false)
                 case .finished:
                     break

@@ -10,6 +10,7 @@ import SwiftUI
 
 struct DynamicIslandHeader: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
+    @EnvironmentObject var webcamManager: WebcamManager
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     @StateObject var tvm = TrayDrop.shared
@@ -40,8 +41,30 @@ struct DynamicIslandHeader: View {
 
             HStack(spacing: 4) {
                 if vm.notchState == .open {
+                    if Defaults[.showMirror] {
+                        Button(action: {
+                            if webcamManager.isSessionRunning {
+                                webcamManager.stopSession()
+                            } else {
+                                webcamManager.startSession()
+                            }
+                        }) {
+                            Capsule()
+                                .fill(.black)
+                                .frame(width: 30, height: 30)
+                                .overlay {
+                                    Image(systemName: "web.camera")
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .imageScale(.medium)
+                                }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                     if Defaults[.settingsIconInNotch] {
-                        SettingsLink(label: {
+                        Button(action: {
+                            SettingsWindowController.shared.showWindow()
+                        }) {
                             Capsule()
                                 .fill(.black)
                                 .frame(width: 30, height: 30)
@@ -51,7 +74,7 @@ struct DynamicIslandHeader: View {
                                         .padding()
                                         .imageScale(.medium)
                                 }
-                        })
+                        }
                         .buttonStyle(PlainButtonStyle())
                     }
                     if Defaults[.showBatteryIndicator] {
@@ -81,5 +104,7 @@ struct DynamicIslandHeader: View {
 }
 
 #Preview {
-    DynamicIslandHeader().environmentObject(DynamicIslandViewModel())
+    DynamicIslandHeader()
+        .environmentObject(DynamicIslandViewModel())
+        .environmentObject(WebcamManager.shared)
 }

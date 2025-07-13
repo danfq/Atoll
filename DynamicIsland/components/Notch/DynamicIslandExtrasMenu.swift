@@ -2,10 +2,6 @@
 //  DynamicIslandExtrasMenu.swift
 //  DynamicIsland
 //
-//  Created by Harsh Vardhan  Goswami  on 02/08/24.
-// DynamicIslandExtrasMenu.swift
-//  DynamicIsland
-//
 //  Created by Harsh Vardhan  Goswami  on 04/08/24.
 //
 
@@ -65,7 +61,9 @@ struct DynamicIslandExtrasMenu : View {
     }
     
     var settings: some View {
-        SettingsLink(label: {
+        Button(action: {
+            SettingsWindowController.shared.showWindow()
+        }) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12.0).fill(.black).frame(width: 70, height: 70)
                 VStack(spacing: 8) {
@@ -74,7 +72,7 @@ struct DynamicIslandExtrasMenu : View {
                     Text("Settings").font(.body)
                 }
             }
-        })
+        }
         .buttonStyle(PlainButtonStyle()).shadow(color: .black.opacity(0.5), radius: 10)
     }
     
@@ -107,5 +105,5 @@ struct DynamicIslandExtrasMenu : View {
 
 
 #Preview {
-    DynamicIslandExtrasMenu(vm: .init())
+    DynamicIslandExtrasMenu(vm: DynamicIslandViewModel())
 }

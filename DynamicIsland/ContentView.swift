@@ -15,7 +15,7 @@ import SwiftUIIntrospect
 
 struct ContentView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
-    @StateObject var webcamManager: WebcamManager = .init()
+    @EnvironmentObject var webcamManager: WebcamManager
 
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
