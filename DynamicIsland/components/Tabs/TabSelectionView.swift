@@ -21,24 +21,29 @@ struct TabSelectionView: View {
     @Default(.enableStatsFeature) var enableStatsFeature
     @Default(.enableColorPickerFeature) var enableColorPickerFeature
     @Namespace var animation
-    
+
     private var tabs: [TabModel] {
         var tabsArray: [TabModel] = []
-        
+
         tabsArray.append(TabModel(label: "Home", icon: "house.fill", view: .home))
-        
+
         tabsArray.append(TabModel(label: "Shelf", icon: "tray.fill", view: .shelf))
-        
+
         // Timer tab only shown when timer feature is enabled
         if Defaults[.enableTimerFeature] {
             tabsArray.append(TabModel(label: "Timer", icon: "timer", view: .timer))
         }
-        
+
         // Stats tab only shown when stats feature is enabled
         if Defaults[.enableStatsFeature] {
             tabsArray.append(TabModel(label: "Stats", icon: "chart.xyaxis.line", view: .stats))
         }
-        
+
+        // Assistant tab only shown when assistant feature is enabled
+        if Defaults[.enableScreenAssistant] {
+            tabsArray.append(TabModel(label: "Assistant", icon: "brain.head.profile", view: .assistant))
+        }
+
         return tabsArray
     }
     var body: some View {

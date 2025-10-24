@@ -14,7 +14,7 @@ import SwiftUI
 let downloadSneakSize: CGSize = .init(width: 65, height: 1)
 let batterySneakSize: CGSize = .init(width: 160, height: 1)
 
-let openNotchSize: CGSize = .init(width: 640, height: 190)
+let openNotchSize: CGSize = .init(width: 710, height: 190)
 let minimalisticOpenNotchSize: CGSize = .init(width: 420, height: 180)
 let cornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 19, bottom: 24), closed: (top: 6, bottom: 14))
 let minimalisticCornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 35, bottom: 35), closed: cornerRadiusInsets.closed)
@@ -30,11 +30,11 @@ func getScreenFrame(_ screen: String? = nil) -> CGRect? {
     if let customScreen = screen {
         selectedScreen = NSScreen.screens.first(where: { $0.localizedName == customScreen })
     }
-    
+
     if let screen = selectedScreen {
         return screen.frame
     }
-    
+
     return nil
 }
 

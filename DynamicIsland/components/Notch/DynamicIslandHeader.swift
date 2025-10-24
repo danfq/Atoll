@@ -141,44 +141,6 @@ struct DynamicIslandHeader: View {
                         }
                     }
 
-                    //Assistant
-                    if Defaults[.enableScreenAssistant] {
-                        Button(action: {
-                            switch Defaults[.screenAssistantDisplayMode] {
-                            case .panel:
-                                ScreenAssistantPanelManager.shared.toggleScreenAssistantPanel()
-                            case .notch:
-                                withAnimation(.smooth) {
-                                    coordinator.currentView = .assistant
-                                }
-                            }
-                        }) {
-                            Capsule()
-                                .fill(.black)
-                                .frame(width: 30, height: 30)
-                                .overlay {
-                                    Image(systemName: "brain.head.profile")
-                                        .foregroundColor(.white)
-                                        .padding()
-                                        .imageScale(.medium)
-                                }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .popover(isPresented: $showColorPickerPopover, arrowEdge: .bottom) {
-                            ColorPickerPopover()
-                        }
-                        .onChange(of: showColorPickerPopover) { isActive in
-                            vm.isColorPickerPopoverActive = isActive
-
-                            // If popover was closed, trigger a hover recheck
-                            if !isActive {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    vm.shouldRecheckHover.toggle()
-                                }
-                            }
-                        }
-                    }
-
                     if Defaults[.settingsIconInNotch] {
                         Button(action: {
                             SettingsWindowController.shared.showWindow()
