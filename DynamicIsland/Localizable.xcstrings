@@ -13167,7 +13167,7 @@
     "Popover mode shows color picker as a dropdown attached to the color picker button. Panel mode shows color picker in a floating window." : {
 
     },
-    "Popover mode shows the assistant as a dropdown attached to the AI button. Panel mode shows the assistant in a floating window near the notch." : {
+    "Popover mode shows the assistant inside the notch." : {
 
     },
     "Position" : {

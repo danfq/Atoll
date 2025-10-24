@@ -2288,8 +2288,8 @@ struct ScreenAssistantSettings: View {
                     Text("Configuration")
                 } footer: {
                     switch screenAssistantDisplayMode {
-                    case .popover:
-                        Text("Popover mode shows the assistant as a dropdown attached to the AI button. Panel mode shows the assistant in a floating window near the notch.")
+                    case .notch:
+                        Text("Popover mode shows the assistant inside the notch.")
                     case .panel:
                         Text("Panel mode shows the assistant in a floating window near the notch. Popover mode shows the assistant as a dropdown attached to the AI button.")
                     }

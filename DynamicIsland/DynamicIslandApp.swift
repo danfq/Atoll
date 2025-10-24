@@ -603,8 +603,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             switch Defaults[.screenAssistantDisplayMode] {
             case .panel:
                 ScreenAssistantPanelManager.shared.toggleScreenAssistantPanel()
-            case .popover:
-                // For popover mode, first ensure notch is open, then toggle popover
+            case .notch:
+                // For notch mode, first ensure notch is open, then toggle new view
                 
                 // If notch is closed, open it first
                 if self.vm.notchState == .closed {

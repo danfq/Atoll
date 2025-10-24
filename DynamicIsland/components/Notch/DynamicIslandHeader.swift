@@ -17,7 +17,7 @@ struct DynamicIslandHeader: View {
     @ObservedObject var tvm = TrayDrop.shared
     @State private var showClipboardPopover = false
     @State private var showColorPickerPopover = false
-    
+
     var body: some View {
         HStack(spacing: 0) {
             if !Defaults[.enableMinimalisticUI] {
@@ -63,7 +63,7 @@ struct DynamicIslandHeader: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    
+
                     if Defaults[.enableClipboardManager] && Defaults[.showClipboardIcon] {
                         Button(action: {
                             // Switch behavior based on display mode
@@ -90,7 +90,7 @@ struct DynamicIslandHeader: View {
                         }
                         .onChange(of: showClipboardPopover) { isActive in
                             vm.isClipboardPopoverActive = isActive
-                            
+
                             // If popover was closed, trigger a hover recheck
                             if !isActive {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -104,7 +104,7 @@ struct DynamicIslandHeader: View {
                             }
                         }
                     }
-                    
+
                     // ColorPicker button
                     if Defaults[.enableColorPickerFeature] {
                         Button(action: {
@@ -131,7 +131,7 @@ struct DynamicIslandHeader: View {
                         }
                         .onChange(of: showColorPickerPopover) { isActive in
                             vm.isColorPickerPopoverActive = isActive
-                            
+
                             // If popover was closed, trigger a hover recheck
                             if !isActive {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -140,7 +140,45 @@ struct DynamicIslandHeader: View {
                             }
                         }
                     }
-                    
+
+                    //Assistant
+                    if Defaults[.enableScreenAssistant] {
+                        Button(action: {
+                            switch Defaults[.screenAssistantDisplayMode] {
+                            case .panel:
+                                ScreenAssistantPanelManager.shared.toggleScreenAssistantPanel()
+                            case .notch:
+                                withAnimation(.smooth) {
+                                    coordinator.currentView = .assistant
+                                }
+                            }
+                        }) {
+                            Capsule()
+                                .fill(.black)
+                                .frame(width: 30, height: 30)
+                                .overlay {
+                                    Image(systemName: "brain.head.profile")
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .imageScale(.medium)
+                                }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .popover(isPresented: $showColorPickerPopover, arrowEdge: .bottom) {
+                            ColorPickerPopover()
+                        }
+                        .onChange(of: showColorPickerPopover) { isActive in
+                            vm.isColorPickerPopoverActive = isActive
+
+                            // If popover was closed, trigger a hover recheck
+                            if !isActive {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    vm.shouldRecheckHover.toggle()
+                                }
+                            }
+                        }
+                    }
+
                     if Defaults[.settingsIconInNotch] {
                         Button(action: {
                             SettingsWindowController.shared.showWindow()
@@ -157,13 +195,13 @@ struct DynamicIslandHeader: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    
+
                     // Screen Recording Indicator
                     if Defaults[.enableScreenRecordingDetection] && Defaults[.showRecordingIndicator] {
                         RecordingIndicator()
                             .frame(width: 30, height: 30) // Same size as other header elements
                     }
-                    
+
                     if Defaults[.showBatteryIndicator] {
                         DynamicIslandBatteryView(
                             batteryWidth: 30,
