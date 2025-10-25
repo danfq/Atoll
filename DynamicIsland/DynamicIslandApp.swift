@@ -35,14 +35,9 @@ struct DynamicNotchApp: App {
                 SettingsWindowController.shared.showWindow()
             }
             .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
-            if false {
-                Button("Activate License") {
-                    openWindow(id: "activation")
-                }
-            }
             CheckForUpdatesView(updater: updaterController.updater)
             Divider()
-            Button("Restart Dynamic Island") {
+            Button("Restart Atoll") {
                 guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
 
                 let workspace = NSWorkspace.shared
@@ -63,12 +58,6 @@ struct DynamicNotchApp: App {
             }
             .keyboardShortcut(KeyEquivalent("Q"), modifiers: .command)
         }
-
-        Window("Activation", id: "activation") {
-            ActivationWindow()
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
     }
 }
 
@@ -92,7 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindowController: NSWindowController?
     private var cancellables = Set<AnyCancellable>()
     private var windowsHiddenForLock = false
-    
+
     // Debouncing mechanism for window size updates
     private var windowSizeUpdateWorkItem: DispatchWorkItem?
 //    let calendarManager = CalendarManager.shared
@@ -101,19 +90,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 //    private var previousScreens: [NSScreen]?
 //    private var onboardingWindowController: NSWindowController?
 //    private var cancellables = Set<AnyCancellable>()
-//    
+//
 //    // Debouncing mechanism for window size updates
 //    private var windowSizeUpdateWorkItem: DispatchWorkItem?
-    
+
     private func debouncedUpdateWindowSize() {
         // Cancel any existing work item
         windowSizeUpdateWorkItem?.cancel()
-        
+
         // Create new work item with delay
         let workItem = DispatchWorkItem { [weak self] in
             self?.updateWindowSizeIfNeeded()
         }
-        
+
         // Store reference and schedule
         windowSizeUpdateWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
@@ -122,13 +111,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
-    
+
     func applicationWillTerminate(_ notification: Notification) {
         // Cancel any pending window size updates
         windowSizeUpdateWorkItem?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
-    
+
     @objc func onScreenLocked(_: Notification) {
         print("Screen locked")
         hideWindowsForLock()
@@ -172,7 +161,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.alphaValue = 1
         }
     }
-    
+
     private func cleanupWindows(shouldInvert: Bool = false) {
         if shouldInvert ? !Defaults[.showOnAllDisplays] : Defaults[.showOnAllDisplays] {
             for window in windows.values {
@@ -193,7 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     {
         // Use the current required size instead of always using openNotchSize
         let requiredSize = calculateRequiredNotchSize()
-        
+
         let window = DynamicIslandWindow(
             contentRect: NSRect(
                 x: 0, y: 0, width: requiredSize.width, height: requiredSize.height),
@@ -201,14 +190,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        
+
         window.contentView = NSHostingView(
             rootView: ContentView()
                 .environmentObject(viewModel)
                 .environmentObject(webcamManager)
                 //.moveToSky()
         )
-        
+
         window.orderFrontRegardless()
         NotchSpaceManager.shared.notchSpace.windows.insert(window)
         //SkyLightOperator.shared.delegateWindow(window)
@@ -220,29 +209,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if changeAlpha {
             window.alphaValue = 0
         }
-        
+
         // Use the same centering logic as updateWindowSizeIfNeeded()
         let screenFrame = screen.frame
         let centerX = screenFrame.origin.x + (screenFrame.width / 2)
         let newX = centerX - (window.frame.width / 2)
         let newY = screenFrame.origin.y + screenFrame.height - window.frame.height
-        
+
         window.setFrame(NSRect(
             x: newX,
             y: newY,
             width: window.frame.width,
             height: window.frame.height
         ), display: false)
-        
+
         if changeAlpha {
             window.alphaValue = 1
         }
     }
-    
+
     private func updateWindowSizeIfNeeded() {
         // Calculate required size based on current state
         let requiredSize = calculateRequiredNotchSize()
-        
+
         if Defaults[.showOnAllDisplays] {
             // Update all windows if size has changed (multi-display mode)
             for (screen, window) in windows {
@@ -252,12 +241,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     let centerX = screenFrame.origin.x + (screenFrame.width / 2)
                     let newX = centerX - (requiredSize.width / 2)
                     let newY = screenFrame.origin.y + screenFrame.height - requiredSize.height
-                    
+
                     // Stop any existing animations first
                     NSAnimationContext.runAnimationGroup { _ in
                         window.animator().setFrame(window.frame, display: false)
                     }
-                    
+
                     // Animate window resize smoothly
                     NSAnimationContext.runAnimationGroup { context in
                         context.duration = 0.25
@@ -279,18 +268,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let currentScreen = NSScreen.screens.first { screen in
                     screen.frame.intersects(window.frame)
                 } ?? NSScreen.main ?? NSScreen.screens.first!
-                
+
                 // Calculate center position BEFORE any changes
                 let screenFrame = currentScreen.frame
                 let centerX = screenFrame.origin.x + (screenFrame.width / 2)
                 let newX = centerX - (requiredSize.width / 2)
                 let newY = screenFrame.origin.y + screenFrame.height - requiredSize.height
-                
+
                 // Stop any existing animations first
                 NSAnimationContext.runAnimationGroup { _ in
                     window.animator().setFrame(window.frame, display: false)
                 }
-                
+
                 // Animate window resize smoothly
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0.25
@@ -306,15 +295,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
+
     private func calculateRequiredNotchSize() -> CGSize {
         // Check if inline sneak peek is showing and notch is closed
-        let isInlineSneakPeekActive = vm.notchState == .closed && 
-                                      coordinator.expandingView.show && 
-                                      (coordinator.expandingView.type == .music || coordinator.expandingView.type == .timer) && 
-                                      Defaults[.enableSneakPeek] && 
+        let isInlineSneakPeekActive = vm.notchState == .closed &&
+                                      coordinator.expandingView.show &&
+                                      (coordinator.expandingView.type == .music || coordinator.expandingView.type == .timer) &&
+                                      Defaults[.enableSneakPeek] &&
                                       Defaults[.sneakPeekStyles] == .inline
-        
+
         // If inline sneak peek is active, use a wider width to accommodate the expanded content
         if isInlineSneakPeekActive {
             // Calculate required width for inline sneak peek:
@@ -322,89 +311,89 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let inlineSneakPeekWidth: CGFloat = 450
             return CGSize(width: inlineSneakPeekWidth, height: vm.effectiveClosedNotchHeight)
         }
-        
+
         // Use minimalistic or normal size based on settings
         let baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize : openNotchSize
-        
+
         // Only apply dynamic sizing when on stats tab and stats are enabled
         guard coordinator.currentView == .stats && Defaults[.enableStatsFeature] else {
             return baseSize
         }
-        
+
         let enabledGraphsCount = [
             Defaults[.showCpuGraph],
-            Defaults[.showMemoryGraph], 
+            Defaults[.showMemoryGraph],
             Defaults[.showGpuGraph],
             Defaults[.showNetworkGraph],
             Defaults[.showDiskGraph]
         ].filter { $0 }.count
-        
+
         // Calculate height based on layout: 1-3 graphs = single row, 4+ graphs = two rows
         var requiredHeight = baseSize.height
-        
+
         if enabledGraphsCount >= 4 {
             // Two rows needed - add height for second row plus spacing
             let extraHeight: CGFloat = 120 + 12 // Graph height + spacing
             requiredHeight = baseSize.height + extraHeight
         }
-        
+
         // Width stays constant - no horizontal expansion
         return CGSize(width: baseSize.width, height: requiredHeight)
     }
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
 
         coordinator.setupWorkersNotificationObservers()
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
-        
+
         // Migrate legacy progress bar settings
         Defaults.Keys.migrateProgressBarStyle()
-        
+
         // Initialize idle animations (load bundled + built-in face)
         idleAnimationManager.initializeDefaultAnimations()
-        
+
         // Setup SystemHUD Manager
         SystemHUDManager.shared.setup(coordinator: coordinator)
-        
+
         // Setup ScreenRecording Manager
         if Defaults[.enableScreenRecordingDetection] {
             ScreenRecordingManager.shared.startMonitoring()
         }
-        
+
         // Setup Privacy Indicator Manager (camera and microphone monitoring)
         PrivacyIndicatorManager.shared.startMonitoring()
-        
+
         // Observe tab changes - use debounced updates
         coordinator.$currentView.sink { [weak self] newView in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         // Observe stats settings changes - use debounced updates
         Defaults.publisher(.enableStatsFeature, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         Defaults.publisher(.showCpuGraph, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         Defaults.publisher(.showMemoryGraph, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         Defaults.publisher(.showGpuGraph, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         Defaults.publisher(.showNetworkGraph, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         Defaults.publisher(.showDiskGraph, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
-        
+
         // Observe minimalistic UI setting changes - trigger window resize
         Defaults.publisher(.enableMinimalisticUI, options: []).sink { [weak self] change in
             // Force sneak peek to standard mode when minimalistic UI is enabled
@@ -414,7 +403,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Update window size IMMEDIATELY (no debouncing) to prevent position shift
             self?.updateWindowSizeIfNeeded()
         }.store(in: &cancellables)
-        
+
         // Observe screen recording settings changes
         Defaults.publisher(.enableScreenRecordingDetection, options: []).sink { _ in
             if Defaults[.enableScreenRecordingDetection] {
@@ -423,7 +412,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ScreenRecordingManager.shared.stopMonitoring()
             }
         }.store(in: &cancellables)
-        
+
         // Note: Polling setting removed - now uses event-driven private API detection only
 
         NotificationCenter.default.addObserver(
@@ -479,10 +468,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             self.coordinator.toggleSneakPeek(
                 status: !self.coordinator.sneakPeek.show,
                 type: .music,
@@ -492,12 +481,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         KeyboardShortcuts.onKeyDown(for: .toggleNotchOpen) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             let mouseLocation = NSEvent.mouseLocation
-            
+
             var viewModel = self.vm
 
             if Defaults[.showOnAllDisplays] {
@@ -510,59 +499,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
-            
+
             self.closeNotchWorkItem?.cancel()
             self.closeNotchWorkItem = nil
-            
+
             switch viewModel.notchState {
             case .closed:
                 viewModel.open()
-                
+
                 let workItem = DispatchWorkItem { [weak viewModel] in
                     viewModel?.close()
                 }
                 self.closeNotchWorkItem = workItem
-                
+
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
             case .open:
                 viewModel.close()
             }
         }
-        
+
         KeyboardShortcuts.onKeyDown(for: .startDemoTimer) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             // Only start timer if the timer feature is enabled
             guard Defaults[.enableTimerFeature] else { return }
-            
+
             // Start a 5-minute demo timer
             TimerManager.shared.startDemoTimer(duration: 300)
         }
-        
+
         KeyboardShortcuts.onKeyDown(for: .clipboardHistoryPanel) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             // Only open clipboard if the feature is enabled
             guard Defaults[.enableClipboardManager] else { return }
-            
+
             // Start clipboard monitoring if not already running
             if !ClipboardManager.shared.isMonitoring {
                 ClipboardManager.shared.startMonitoring()
             }
-            
+
             // Handle keyboard shortcut based on display mode
             switch Defaults[.clipboardDisplayMode] {
             case .panel:
                 ClipboardPanelManager.shared.toggleClipboardPanel()
             case .popover:
                 // For popover mode, first ensure notch is open, then toggle popover
-                
+
                 // If notch is closed, open it first
                 if self.vm.notchState == .closed {
                     self.vm.open()
@@ -576,36 +565,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        
+
         KeyboardShortcuts.onKeyDown(for: .colorPickerPanel) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             // Only open color picker panel if the feature is enabled
             guard Defaults[.enableColorPickerFeature] else { return }
-            
+
             // Toggle color picker panel
             ColorPickerPanelManager.shared.toggleColorPickerPanel()
         }
-        
+
         KeyboardShortcuts.onKeyDown(for: .screenAssistantPanel) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             // Only open screen assistant if the feature is enabled
             guard Defaults[.enableScreenAssistant] else { return }
-            
+
             // Handle keyboard shortcut based on display mode
             switch Defaults[.screenAssistantDisplayMode] {
             case .panel:
                 ScreenAssistantPanelManager.shared.toggleScreenAssistantPanel()
             case .notch:
                 // For notch mode, first ensure notch is open, then toggle new view
-                
+
                 // If notch is closed, open it first
                 if self.vm.notchState == .closed {
                     self.vm.open()
@@ -619,25 +608,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        
+
         KeyboardShortcuts.onKeyDown(for: .statsPanel) { [weak self] in
             guard let self = self else { return }
-            
+
             // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-            
+
             // Only open stats panel if both stats feature and panel are enabled
             guard Defaults[.enableStatsFeature] && Defaults[.showStatsPanel] else { return }
-            
+
             // Start stats monitoring if not already running
             if !StatsManager.shared.isMonitoring {
                 StatsManager.shared.startMonitoring()
             }
-            
+
             // Toggle stats panel
             StatsPanelManager.shared.toggleStatsPanel()
         }
-        
+
         if !Defaults[.showOnAllDisplays] {
             let viewModel = self.vm
             let window = createDynamicIslandWindow(
@@ -647,14 +636,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             adjustWindowPosition(changeAlpha: true)
         }
-        
+
         if coordinator.firstLaunch {
             DispatchQueue.main.async {
                 self.showOnboardingWindow()
             }
             playWelcomeSound()
         }
-        
+
         previousScreens = NSScreen.screens
 
         if Defaults[.enableLockScreenWeatherWidget] {
@@ -664,12 +653,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
+
     func playWelcomeSound() {
         let audioPlayer = AudioPlayer()
         audioPlayer.play(fileName: "dynamic", fileExtension: "m4a")
     }
-    
+
     func deviceHasNotch() -> Bool {
         if #available(macOS 12.0, *) {
             for screen in NSScreen.screens {
@@ -680,7 +669,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return false
     }
-    
+
     @objc func screenConfigurationDidChange() {
         let currentScreens = NSScreen.screens
 
@@ -691,7 +680,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             || Set(currentScreens.map { $0.frame }) != Set(previousScreens?.map { $0.frame } ?? [])
 
         previousScreens = currentScreens
-        
+
         if screensChanged {
             DispatchQueue.main.async { [weak self] in
                 self?.cleanupWindows()
@@ -699,11 +688,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
+
     @objc func adjustWindowPosition(changeAlpha: Bool = false) {
         if Defaults[.showOnAllDisplays] {
             let currentScreens = Set(NSScreen.screens)
-            
+
             for screen in windows.keys where !currentScreens.contains(screen) {
                 if let window = windows[screen] {
                     window.close()
@@ -712,19 +701,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     viewModels.removeValue(forKey: screen)
                 }
             }
-            
+
             for screen in currentScreens {
                 if windows[screen] == nil {
                     let viewModel = DynamicIslandViewModel(screen: screen.localizedName)
                     let window = createDynamicIslandWindow(for: screen, with: viewModel)
-                    
+
                     windows[screen] = window
                     viewModels[screen] = viewModel
                 }
-                
+
                 if let window = windows[screen], let viewModel = viewModels[screen] {
                     positionWindow(window, on: screen, changeAlpha: changeAlpha)
-                    
+
                     if viewModel.notchState == .closed {
                         viewModel.close()
                     }
@@ -747,24 +736,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return
             }
-            
+
             vm.screen = selectedScreen.localizedName
             vm.notchSize = getClosedNotchSize(screen: selectedScreen.localizedName)
-            
+
             if window == nil {
                 window = createDynamicIslandWindow(for: selectedScreen, with: vm)
             }
-            
+
             if let window = window {
                 positionWindow(window, on: selectedScreen, changeAlpha: changeAlpha)
-                
+
                 if vm.notchState == .closed {
                     vm.close()
                 }
             }
         }
     }
-    
+
     @objc func togglePopover(_ sender: Any?) {
         if window?.isVisible == true {
             window?.orderOut(nil)
@@ -772,17 +761,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window?.orderFrontRegardless()
         }
     }
-    
+
     @objc func showMenu() {
         statusItem?.menu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
-    
+
     @objc func quitAction() {
         NSApplication.shared.terminate(nil)
     }
 
-    
-    
+
+
     private func showOnboardingWindow() {
         if onboardingWindowController == nil {
             let window = NSWindow(
