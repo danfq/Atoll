@@ -1,5 +1,5 @@
 //
-//  ChatPanels.swift
+//  PanelsVisualEffect.swift
 //  DynamicIsland
 //
 //  Created by DanFQ

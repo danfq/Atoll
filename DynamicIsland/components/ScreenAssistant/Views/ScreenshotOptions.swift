@@ -1,5 +1,5 @@
 //
-//  ChatPanels.swift
+//  ScreenshotOptions.swift
 //  DynamicIsland
 //
 //  Created by DanFQ

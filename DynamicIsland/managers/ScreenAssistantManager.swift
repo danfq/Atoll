@@ -17,7 +17,7 @@ struct ChatMessage: Identifiable, Codable {
     let isFromUser: Bool
     let timestamp: Date
     let attachedFiles: [ScreenAssistantFile]?
-    
+
     init(content: String, isFromUser: Bool, attachedFiles: [ScreenAssistantFile]? = nil) {
         self.content = content
         self.isFromUser = isFromUser
@@ -34,14 +34,14 @@ struct ScreenAssistantFile: Identifiable, Codable {
     let timestamp: Date
     let fileURL: String? // For local files
     let audioFileName: String? // For audio recordings
-    
+
     enum FileType: String, CaseIterable, Codable {
         case document = "document"
         case image = "image"
         case audio = "audio"
         case video = "video"
         case other = "other"
-        
+
         var iconName: String {
             switch self {
             case .document: return "doc.text"
@@ -51,7 +51,7 @@ struct ScreenAssistantFile: Identifiable, Codable {
             case .other: return "doc"
             }
         }
-        
+
         var displayName: String {
             switch self {
             case .document: return "Document"
@@ -62,14 +62,14 @@ struct ScreenAssistantFile: Identifiable, Codable {
             }
         }
     }
-    
+
     init(fileURL: URL) {
         // Defensive initialization with nil coalescing
         self.name = fileURL.lastPathComponent.isEmpty ? "Unknown File" : fileURL.lastPathComponent
         self.fileURL = fileURL.absoluteString
         self.audioFileName = nil
         self.timestamp = Date()
-        
+
         // Safe file extension extraction
         let fileExtension = fileURL.pathExtension.lowercased()
         switch fileExtension {
@@ -84,10 +84,10 @@ struct ScreenAssistantFile: Identifiable, Codable {
         default:
             self.type = .other
         }
-        
+
         print("✅ ScreenAssistantFile: Created file entry - name: \(self.name), type: \(self.type), url: \(self.fileURL ?? "nil")")
     }
-    
+
     init(audioFileName: String, name: String) {
         self.name = name
         self.type = .audio
@@ -99,95 +99,98 @@ struct ScreenAssistantFile: Identifiable, Codable {
 
 class ScreenAssistantManager: NSObject, ObservableObject {
     static let shared = ScreenAssistantManager()
-    
+
     @Published var attachedFiles: [ScreenAssistantFile] = []
     @Published var isRecording: Bool = false
     @Published var recordingDuration: TimeInterval = 0
     @Published var chatMessages: [ChatMessage] = []
     @Published var isLoading: Bool = false
-    
+
     private var audioRecorder: AVAudioRecorder?
     private var recordingTimer: Timer?
-    
+
     // Panel management
     private var chatMessagesPanel: ChatMessagesPanel?
     private var chatInputPanel: ChatInputPanel?
-    
+
     // Directory for storing audio recordings
     static let audioDataDirectory: URL = {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let audioDir = documentsPath.appendingPathComponent("ScreenAssistantAudio")
-        
+
         // Create directory if it doesn't exist
         try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
-        
+
         return audioDir
     }()
-    
+
     // Directory for storing screenshots
     static let screenshotDataDirectory: URL = {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let screenshotDir = documentsPath.appendingPathComponent("ScreenAssistantScreenshots")
-        
+
         // Create directory if it doesn't exist
         try? FileManager.default.createDirectory(at: screenshotDir, withIntermediateDirectories: true)
-        
+
         return screenshotDir
     }()
-    
+
     private override init() {
         super.init()
         loadFilesFromDefaults()
     }
-    
+
     deinit {
         stopRecording()
         closePanels()
     }
-    
+
     // MARK: - Panel Management
-    
+
     func showPanels() {
         // Close existing panels first
         closePanels()
-        
-        // Create and show chat messages panel (left side)
+
+        // First create and position messages panel
         chatMessagesPanel = ChatMessagesPanel()
         chatMessagesPanel?.positionOnLeftSide()
+
+        // Show messages panel first
         chatMessagesPanel?.makeKeyAndOrderFront(nil)
-        
-        // Create and show input panel (center)
-        chatInputPanel = ChatInputPanel()
-        chatInputPanel?.positionInCenter()
-        chatInputPanel?.makeKeyAndOrderFront(nil)
-        
-        // Focus on input panel for immediate typing
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+
+        // Create input panel and show it with a small delay
+        // This allows time for the messages panel to save its position
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.chatInputPanel = ChatInputPanel()
+            self.chatInputPanel?.positionInCenter() // Will read the saved frame position
+            self.chatInputPanel?.makeKeyAndOrderFront(nil)
+
+            // Focus on input panel for immediate typing
             self.chatInputPanel?.makeKey()
         }
     }
-    
+
     func closePanels() {
         chatMessagesPanel?.close()
         chatInputPanel?.close()
         chatMessagesPanel = nil
         chatInputPanel = nil
     }
-    
+
     func arePanelsVisible() -> Bool {
         return chatMessagesPanel?.isVisible == true || chatInputPanel?.isVisible == true
     }
-    
+
     // MARK: - File Management
-    
+
     func addFiles(_ urls: [URL]) {
         guard !urls.isEmpty else {
             print("⚠️ ScreenAssistant: No URLs provided to addFiles")
             return
         }
-        
+
         print("📁 ScreenAssistant: Adding \(urls.count) files")
-        
+
         let newFiles = urls.compactMap { url -> ScreenAssistantFile? in
             // Wrap in autoreleasepool to manage memory
             return autoreleasepool {
@@ -197,40 +200,40 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                         print("❌ ScreenAssistant: File does not exist at \(url.path)")
                         return nil
                     }
-                    
+
                     // Verify file is readable
                     guard FileManager.default.isReadableFile(atPath: url.path) else {
                         print("❌ ScreenAssistant: File is not readable at \(url.path)")
                         return nil
                     }
-                    
+
                     // Create file entry with error handling
                     let file = ScreenAssistantFile(fileURL: url)
                     print("✅ ScreenAssistant: Created file entry for \(file.name)")
                     return file
-                    
+
                 } catch {
                     print("❌ ScreenAssistant: Error creating file entry - \(error)")
                     return nil
                 }
             }
         }
-        
+
         guard !newFiles.isEmpty else {
             print("⚠️ ScreenAssistant: No valid files to add")
             return
         }
-        
+
         // Ensure we're on the main thread for @Published property updates
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 print("❌ ScreenAssistant: Self deallocated during addFiles")
                 return
             }
-            
+
             self.attachedFiles.append(contentsOf: newFiles)
             print("📁 ScreenAssistant: Total attached files: \(self.attachedFiles.count)")
-            
+
             // Save to defaults with error handling
             do {
                 self.saveFilesToDefaults()
@@ -239,19 +242,19 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             }
         }
     }
-    
+
     func removeFile(_ file: ScreenAssistantFile) {
         attachedFiles.removeAll { $0.id == file.id }
-        
+
         // Clean up audio file if it exists
         if let audioFileName = file.audioFileName {
             let audioURL = ScreenAssistantManager.audioDataDirectory.appendingPathComponent(audioFileName)
             try? FileManager.default.removeItem(at: audioURL)
         }
-        
+
         saveFilesToDefaults()
     }
-    
+
     func clearAllFiles() {
         // Clean up all audio files
         for file in attachedFiles {
@@ -260,13 +263,13 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 try? FileManager.default.removeItem(at: audioURL)
             }
         }
-        
+
         attachedFiles.removeAll()
         saveFilesToDefaults()
     }
-    
+
     // MARK: - Audio Recording
-    
+
     func toggleRecording() {
         if isRecording {
             stopRecording()
@@ -274,59 +277,59 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             startRecording()
         }
     }
-    
+
     private func startRecording() {
         guard !isRecording else { return }
-        
+
         let fileName = "recording_\(Date().timeIntervalSince1970).m4a"
         let audioURL = ScreenAssistantManager.audioDataDirectory.appendingPathComponent(fileName)
-        
+
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44100,
             AVNumberOfChannelsKey: 2,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
-        
+
         do {
             audioRecorder = try AVAudioRecorder(url: audioURL, settings: settings)
             audioRecorder?.delegate = self
             audioRecorder?.isMeteringEnabled = true
             audioRecorder?.prepareToRecord()
             audioRecorder?.record()
-            
+
             isRecording = true
             recordingDuration = 0
-            
+
             // Start timer for recording duration
             recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 self?.updateRecordingDuration()
             }
-            
+
             print("Started recording: \(fileName)")
         } catch {
             print("Failed to start recording: \(error)")
         }
     }
-    
+
     private func stopRecording() {
         guard isRecording else { return }
-        
+
         audioRecorder?.stop()
         recordingTimer?.invalidate()
         recordingTimer = nil
         isRecording = false
-        
+
         print("Stopped recording")
     }
-    
+
     private func updateRecordingDuration() {
         guard let recorder = audioRecorder, recorder.isRecording else { return }
         recordingDuration = recorder.currentTime
     }
-    
+
     // MARK: - Persistence
-    
+
     private func saveFilesToDefaults() {
         do {
             let encoded = try JSONEncoder().encode(attachedFiles)
@@ -337,44 +340,44 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             // Don't throw - this is a non-critical operation
         }
     }
-    
+
     private func loadFilesFromDefaults() {
         guard let data = UserDefaults.standard.data(forKey: "ScreenAssistantFiles"),
               let decoded = try? JSONDecoder().decode([ScreenAssistantFile].self, from: data) else {
             return
         }
-        
+
         attachedFiles = decoded
     }
-    
+
     // MARK: - Chat Management
-    
+
     func sendMessage(_ message: String) {
         print("📤 ScreenAssistant: Sending message - '\(message)'")
         print("📁 ScreenAssistant: Attached files count: \(attachedFiles.count)")
-        
+
         // Add user message to chat
         let userMessage = ChatMessage(content: message, isFromUser: true, attachedFiles: attachedFiles.isEmpty ? nil : attachedFiles)
         chatMessages.append(userMessage)
-        
+
         // Print attached files details
         for (index, file) in attachedFiles.enumerated() {
             print("📎 ScreenAssistant: File \(index + 1): \(file.name) (\(file.type.displayName))")
         }
-        
+
         // Clear input and files after sending
         let currentFiles = attachedFiles
         clearAllFiles()
-        
+
         // Send to appropriate AI API based on selected provider
         let provider = Defaults[.selectedAIProvider]
         sendToAI(message: message, files: currentFiles, provider: provider)
     }
-    
+
     private func sendToAI(message: String, files: [ScreenAssistantFile], provider: AIModelProvider) {
         print("🚀 ScreenAssistant: Making API request to \(provider.displayName)")
         isLoading = true
-        
+
         switch provider {
         case .gemini:
             sendToGeminiAPI(message: message, files: files)
@@ -386,7 +389,7 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             sendToLocalAPI(message: message, files: files)
         }
     }
-    
+
     private func sendToGeminiAPI(message: String, files: [ScreenAssistantFile]) {
         let apiKey = Defaults[.geminiApiKey]
         guard !apiKey.isEmpty else {
@@ -395,21 +398,21 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         // Get selected model or default to gemini-2.5-flash
         let selectedModel = Defaults[.selectedAIModel] ?? AIModel(id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", supportsThinking: true)
         let modelId = selectedModel.id
-        
+
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelId):generateContent?key=\(apiKey)") else {
             print("❌ ScreenAssistant: Invalid Gemini API URL")
             addAssistantMessage("Error: Invalid API URL")
             isLoading = false
             return
         }
-        
+
         performAPIRequest(url: url, requestBody: buildGeminiRequestBody(message: message, files: files), provider: .gemini)
     }
-    
+
     private func sendToOpenAIAPI(message: String, files: [ScreenAssistantFile]) {
         let apiKey = Defaults[.openaiApiKey]
         guard !apiKey.isEmpty else {
@@ -418,21 +421,21 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         // Get selected model or default to gpt-4o
         let selectedModel = Defaults[.selectedAIModel] ?? AIModel(id: "gpt-4o", name: "GPT-4o", supportsThinking: false)
         let modelId = selectedModel.id
-        
+
         guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
             print("❌ ScreenAssistant: Invalid OpenAI API URL")
             addAssistantMessage("Error: Invalid API URL")
             isLoading = false
             return
         }
-        
+
         performOpenAIRequest(url: url, requestBody: buildOpenAIRequestBody(message: message, files: files, model: modelId), apiKey: apiKey)
     }
-    
+
     private func sendToClaudeAPI(message: String, files: [ScreenAssistantFile]) {
         let apiKey = Defaults[.claudeApiKey]
         guard !apiKey.isEmpty else {
@@ -441,21 +444,21 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         // Get selected model or default to claude-3-5-sonnet
         let selectedModel = Defaults[.selectedAIModel] ?? AIModel(id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", supportsThinking: false)
         let modelId = selectedModel.id
-        
+
         guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
             print("❌ ScreenAssistant: Invalid Claude API URL")
             addAssistantMessage("Error: Invalid API URL")
             isLoading = false
             return
         }
-        
+
         performClaudeRequest(url: url, requestBody: buildClaudeRequestBody(message: message, files: files, model: modelId), apiKey: apiKey)
     }
-    
+
     private func sendToLocalAPI(message: String, files: [ScreenAssistantFile]) {
         let endpoint = Defaults[.localModelEndpoint]
         guard !endpoint.isEmpty else {
@@ -464,22 +467,22 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         guard let url = URL(string: "\(endpoint)/api/chat") else {
             print("❌ ScreenAssistant: Invalid local API URL")
             addAssistantMessage("Error: Invalid local API URL")
             isLoading = false
             return
         }
-        
+
         performAPIRequest(url: url, requestBody: buildOllamaRequestBody(message: message, files: files), provider: .local)
     }
-    
+
     // MARK: - API Request Builders
-    
+
     private func buildGeminiRequestBody(message: String, files: [ScreenAssistantFile]) -> [String: Any] {
         var contents: [[String: Any]] = []
-        
+
         // Add previous conversation messages (last 10 for context)
         let recentMessages = Array(chatMessages.suffix(10))
         for chatMessage in recentMessages {
@@ -491,14 +494,14 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 ])
             }
         }
-        
+
         // Build current message parts
         var parts: [[String: Any]] = []
-        
+
         // Add text part
         let contextualMessage = buildContextualMessage(message: message, files: files)
         parts.append(["text": contextualMessage])
-        
+
         // Add file content for supported types using proper Gemini 2.5 APIs
         for file in files {
             if let filePart = createGeminiFilePart(for: file) {
@@ -506,13 +509,13 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 print("📎 ScreenAssistant: Added file part for \(file.name)")
             }
         }
-        
+
         // Add current message
         contents.append([
             "role": "user",
             "parts": parts
         ])
-        
+
         var requestBody: [String: Any] = [
             "contents": contents,
             "generationConfig": [
@@ -528,7 +531,7 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                     "threshold": "BLOCK_MEDIUM_AND_ABOVE"
                 ],
                 [
-                    "category": "HARM_CATEGORY_HATE_SPEECH", 
+                    "category": "HARM_CATEGORY_HATE_SPEECH",
                     "threshold": "BLOCK_MEDIUM_AND_ABOVE"
                 ],
                 [
@@ -541,7 +544,7 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 ]
             ]
         ]
-        
+
         // Add thinking configuration if enabled and model supports it
         let selectedModel = Defaults[.selectedAIModel]
         if selectedModel?.supportsThinking == true && Defaults[.enableThinkingMode] {
@@ -551,13 +554,13 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 ]
             ]) { (_, new) in new }
         }
-        
+
         return requestBody
     }
-    
+
     private func buildOpenAIRequestBody(message: String, files: [ScreenAssistantFile], model: String) -> [String: Any] {
         var messages: [[String: Any]] = []
-        
+
         // Add previous conversation messages (last 10 for context)
         let recentMessages = Array(chatMessages.suffix(10))
         for chatMessage in recentMessages {
@@ -569,14 +572,14 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 ])
             }
         }
-        
+
         // Add current message
         let contextualMessage = buildContextualMessage(message: message, files: files)
         messages.append([
             "role": "user",
             "content": contextualMessage
         ])
-        
+
         return [
             "model": model,
             "messages": messages,
@@ -584,10 +587,10 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             "max_tokens": 2048
         ]
     }
-    
+
     private func buildClaudeRequestBody(message: String, files: [ScreenAssistantFile], model: String) -> [String: Any] {
         var messages: [[String: Any]] = []
-        
+
         // Add previous conversation messages (last 10 for context)
         let recentMessages = Array(chatMessages.suffix(10))
         for chatMessage in recentMessages {
@@ -599,25 +602,25 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 ])
             }
         }
-        
+
         // Add current message
         let contextualMessage = buildContextualMessage(message: message, files: files)
         messages.append([
             "role": "user",
             "content": contextualMessage
         ])
-        
+
         return [
             "model": model,
             "max_tokens": 2048,
             "messages": messages
         ]
     }
-    
+
     private func buildOllamaRequestBody(message: String, files: [ScreenAssistantFile]) -> [String: Any] {
         let selectedModel = Defaults[.selectedAIModel] ?? AIModel(id: "llama3.2", name: "Llama 3.2", supportsThinking: false)
         let contextualMessage = buildContextualMessage(message: message, files: files)
-        
+
         return [
             "model": selectedModel.id,
             "messages": [
@@ -629,18 +632,18 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             "stream": false
         ]
     }
-    
+
     // MARK: - API Request Performers
-    
+
     private func performAPIRequest(url: URL, requestBody: [String: Any], provider: AIModelProvider) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: requestBody, options: .prettyPrinted)
             request.httpBody = jsonData
-            
+
             print("📋 ScreenAssistant: Request body size: \(jsonData.count) bytes")
         } catch {
             print("❌ ScreenAssistant: Failed to encode request - \(error)")
@@ -648,23 +651,23 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.handleResponse(data: data, response: response, error: error, provider: provider)
             }
         }
-        
+
         task.resume()
     }
-    
+
     private func performOpenAIRequest(url: URL, requestBody: [String: Any], apiKey: String) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: requestBody, options: .prettyPrinted)
             request.httpBody = jsonData
@@ -674,24 +677,24 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.handleResponse(data: data, response: response, error: error, provider: .openai)
             }
         }
-        
+
         task.resume()
     }
-    
+
     private func performClaudeRequest(url: URL, requestBody: [String: Any], apiKey: String) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.addValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        
+
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: requestBody, options: .prettyPrinted)
             request.httpBody = jsonData
@@ -701,28 +704,28 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             isLoading = false
             return
         }
-        
+
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.handleResponse(data: data, response: response, error: error, provider: .claude)
             }
         }
-        
+
         task.resume()
     }
-    
+
     // MARK: - Response Handlers
-    
+
     private func handleResponse(data: Data?, response: URLResponse?, error: Error?, provider: AIModelProvider) {
         isLoading = false
-        
+
         if let error = error {
             print("❌ ScreenAssistant: Network error - \(error)")
             addAssistantMessage("Error: \(error.localizedDescription)")
             return
         }
-        
+
         if let httpResponse = response as? HTTPURLResponse {
             print("📊 ScreenAssistant: HTTP Status: \(httpResponse.statusCode)")
             if httpResponse.statusCode != 200 {
@@ -730,15 +733,15 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 return
             }
         }
-        
+
         guard let data = data else {
             print("❌ ScreenAssistant: No response data")
             addAssistantMessage("Error: No response data")
             return
         }
-        
+
         print("📨 ScreenAssistant: Response data size: \(data.count) bytes")
-        
+
         // Parse response based on provider
         switch provider {
         case .gemini:
@@ -751,19 +754,19 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             parseOllamaResponse(data: data)
         }
     }
-    
+
     private func parseGeminiResponse(data: Data) {
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 print("✅ ScreenAssistant: Successfully parsed Gemini JSON response")
-                
+
                 if let candidates = json["candidates"] as? [[String: Any]],
                    let firstCandidate = candidates.first,
                    let content = firstCandidate["content"] as? [String: Any],
                    let parts = content["parts"] as? [[String: Any]],
                    let firstPart = parts.first,
                    let text = firstPart["text"] as? String {
-                    
+
                     print("✅ ScreenAssistant: Got Gemini response text: \(text.prefix(100))...")
                     addAssistantMessage(text)
                 } else {
@@ -780,17 +783,17 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage("Error: Failed to parse response - \(error.localizedDescription)")
         }
     }
-    
+
     private func parseOpenAIResponse(data: Data) {
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 print("✅ ScreenAssistant: Successfully parsed OpenAI JSON response")
-                
+
                 if let choices = json["choices"] as? [[String: Any]],
                    let firstChoice = choices.first,
                    let message = firstChoice["message"] as? [String: Any],
                    let content = message["content"] as? String {
-                    
+
                     print("✅ ScreenAssistant: Got OpenAI response text: \(content.prefix(100))...")
                     addAssistantMessage(content)
                 } else {
@@ -807,16 +810,16 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage("Error: Failed to parse response - \(error.localizedDescription)")
         }
     }
-    
+
     private func parseClaudeResponse(data: Data) {
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 print("✅ ScreenAssistant: Successfully parsed Claude JSON response")
-                
+
                 if let content = json["content"] as? [[String: Any]],
                    let firstContent = content.first,
                    let text = firstContent["text"] as? String {
-                    
+
                     print("✅ ScreenAssistant: Got Claude response text: \(text.prefix(100))...")
                     addAssistantMessage(text)
                 } else {
@@ -833,15 +836,15 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage("Error: Failed to parse response - \(error.localizedDescription)")
         }
     }
-    
+
     private func parseOllamaResponse(data: Data) {
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 print("✅ ScreenAssistant: Successfully parsed Ollama JSON response")
-                
+
                 if let message = json["message"] as? [String: Any],
                    let content = message["content"] as? String {
-                    
+
                     print("✅ ScreenAssistant: Got Ollama response text: \(content.prefix(100))...")
                     addAssistantMessage(content)
                 } else {
@@ -854,22 +857,22 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage("Error: Failed to parse response - \(error.localizedDescription)")
         }
     }
-    
+
     private func buildContextualMessage(message: String, files: [ScreenAssistantFile]) -> String {
         var contextualMessage = message
-        
+
         // Add file context with specific instructions for different types
         if !files.isEmpty {
             contextualMessage += "\n\nI have attached the following files for your analysis:"
-            
+
             var hasImages = false
             var hasDocuments = false
             var hasAudio = false
             var hasVideo = false
-            
+
             for file in files {
                 contextualMessage += "\n- \(file.name) (\(file.type.displayName))"
-                
+
                 switch file.type {
                 case .image: hasImages = true
                 case .document: hasDocuments = true
@@ -878,40 +881,40 @@ class ScreenAssistantManager: NSObject, ObservableObject {
                 case .other: break
                 }
             }
-            
+
             // Add specific instructions based on file types
             contextualMessage += "\n\nPlease analyze these files in the context of my question. Specifically:"
-            
+
             if hasImages {
                 contextualMessage += "\n- For images: Describe what you see, identify objects, text, or patterns, and relate them to my question."
             }
-            
+
             if hasDocuments {
                 contextualMessage += "\n- For documents: Read and understand the content, extract key information, and provide insights relevant to my question."
             }
-            
+
             if hasAudio {
                 contextualMessage += "\n- For audio: Listen to and transcribe the audio content, identify speakers, topics, or sounds as relevant."
             }
-            
+
             if hasVideo {
                 contextualMessage += "\n- For video: Analyze both visual and audio content, describe actions, scenes, or dialogue as applicable."
             }
-            
+
             contextualMessage += "\n\nProvide comprehensive insights that combine information from all attached files with your response to my question."
         }
-        
+
         return contextualMessage
     }
-    
+
     private func createGeminiFilePart(for file: ScreenAssistantFile) -> [String: Any]? {
         print("📎 ScreenAssistant: Processing file for Gemini 2.5: \(file.name) (\(file.type.displayName))")
-        
+
         guard let fileURL = file.fileURL, let url = URL(string: fileURL) else {
             print("❌ ScreenAssistant: No valid URL for file \(file.name)")
             return ["text": "File: \(file.name) (no valid URL)"]
         }
-        
+
         switch file.type {
         case .image:
             return createGeminiImagePart(for: url, fileName: file.name)
@@ -925,14 +928,14 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             return createGeminiTextPart(for: url, fileName: file.name)
         }
     }
-    
+
     private func createGeminiImagePart(for url: URL, fileName: String) -> [String: Any]? {
         print("🖼️ ScreenAssistant: Processing image file: \(fileName)")
-        
+
         do {
             let imageData = try Data(contentsOf: url)
             let base64String = imageData.base64EncodedString()
-            
+
             // Determine MIME type
             let mimeType: String
             let pathExtension = url.pathExtension.lowercased()
@@ -950,9 +953,9 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             default:
                 mimeType = "image/jpeg"
             }
-            
+
             print("📎 ScreenAssistant: Image encoded - \(base64String.count) bytes, MIME: \(mimeType)")
-            
+
             return [
                 "inline_data": [
                     "mime_type": mimeType,
@@ -964,20 +967,20 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             return ["text": "Image file: \(fileName) (failed to encode: \(error.localizedDescription))"]
         }
     }
-    
+
     private func createGeminiDocumentPart(for url: URL, fileName: String) -> [String: Any]? {
         print("📄 ScreenAssistant: Processing document file: \(fileName)")
-        
+
         let pathExtension = url.pathExtension.lowercased()
-        
+
         if pathExtension == "pdf" {
             // Handle PDF files using base64 encoding for Gemini 2.5
             do {
                 let pdfData = try Data(contentsOf: url)
                 let base64String = pdfData.base64EncodedString()
-                
+
                 print("📎 ScreenAssistant: PDF encoded - \(base64String.count) bytes")
-                
+
                 return [
                     "inline_data": [
                         "mime_type": "application/pdf",
@@ -1000,14 +1003,14 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             }
         }
     }
-    
+
     private func createGeminiAudioPart(for url: URL, fileName: String) -> [String: Any]? {
         print("🎵 ScreenAssistant: Processing audio file: \(fileName)")
-        
+
         do {
             let audioData = try Data(contentsOf: url)
             let base64String = audioData.base64EncodedString()
-            
+
             // Determine MIME type
             let mimeType: String
             let pathExtension = url.pathExtension.lowercased()
@@ -1025,9 +1028,9 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             default:
                 mimeType = "audio/mpeg"
             }
-            
+
             print("� ScreenAssistant: Audio encoded - \(base64String.count) bytes, MIME: \(mimeType)")
-            
+
             return [
                 "inline_data": [
                     "mime_type": mimeType,
@@ -1039,14 +1042,14 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             return ["text": "Audio file: \(fileName) (failed to encode: \(error.localizedDescription))"]
         }
     }
-    
+
     private func createGeminiVideoPart(for url: URL, fileName: String) -> [String: Any]? {
         print("� ScreenAssistant: Processing video file: \(fileName)")
-        
+
         do {
             let videoData = try Data(contentsOf: url)
             let base64String = videoData.base64EncodedString()
-            
+
             // Determine MIME type
             let mimeType: String
             let pathExtension = url.pathExtension.lowercased()
@@ -1062,9 +1065,9 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             default:
                 mimeType = "video/mp4"
             }
-            
+
             print("📎 ScreenAssistant: Video encoded - \(base64String.count) bytes, MIME: \(mimeType)")
-            
+
             return [
                 "inline_data": [
                     "mime_type": mimeType,
@@ -1076,10 +1079,10 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             return ["text": "Video file: \(fileName) (failed to encode: \(error.localizedDescription))"]
         }
     }
-    
+
     private func createGeminiTextPart(for url: URL, fileName: String) -> [String: Any]? {
         print("📝 ScreenAssistant: Processing text file: \(fileName)")
-        
+
         do {
             let content = try String(contentsOf: url)
             print("📄 ScreenAssistant: Read text content (\(content.count) characters)")
@@ -1089,20 +1092,20 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             return ["text": "File: \(fileName) (could not read content: \(error.localizedDescription))"]
         }
     }
-    
+
     func clearChat() {
         chatMessages.removeAll()
     }
-    
+
     private func addAssistantMessage(_ content: String) {
         print("💬 ScreenAssistant: Adding assistant message: \(content.prefix(100))...")
         let assistantMessage = ChatMessage(content: content, isFromUser: false)
         chatMessages.append(assistantMessage)
     }
-    
+
     private func handleAPIError(statusCode: Int, provider: AIModelProvider) {
         let userFriendlyMessage: String
-        
+
         switch statusCode {
         case 429:
             userFriendlyMessage = "🚫 **Rate Limited**\n\n\(provider.displayName) is currently rate limiting requests. Please wait a moment and try again."
@@ -1119,10 +1122,10 @@ class ScreenAssistantManager: NSObject, ObservableObject {
         default:
             userFriendlyMessage = "❌ **API Error (\(statusCode))**\n\n\(provider.displayName) returned an error. Please try again."
         }
-        
+
         addAssistantMessage(userFriendlyMessage)
     }
-    
+
     private func handleAPIError(error: [String: Any]) {
         guard let code = error["code"] as? Int,
               let message = error["message"] as? String else {
@@ -1130,11 +1133,11 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage("An unknown error occurred. Please try again.")
             return
         }
-        
+
         print("❌ ScreenAssistant: API Error \(code) - \(message)")
-        
+
         let userFriendlyMessage: String
-        
+
         switch code {
         case 429:
             // Quota exceeded
@@ -1143,29 +1146,29 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             } else {
                 userFriendlyMessage = "⏰ **Rate Limited**\n\nToo many requests. Please wait a moment and try again."
             }
-            
+
         case 400:
             userFriendlyMessage = "❌ **Invalid Request**\n\nThere was an issue with your request. Please check your message and attached files."
-            
+
         case 401:
             userFriendlyMessage = "🔑 **Authentication Error**\n\nYour API key appears to be invalid. Please check your API key in settings."
-            
+
         case 403:
             userFriendlyMessage = "🚫 **Access Denied**\n\nYour API key doesn't have permission for this request. Please check your API key settings."
-            
+
         case 404:
             userFriendlyMessage = "🔍 **Model Not Found**\n\nThe requested AI model is not available. Please try again later."
-            
+
         case 500, 502, 503:
             userFriendlyMessage = "⚠️ **Server Error**\n\nThe AI service is experiencing issues. Please try again in a few minutes."
-            
+
         default:
             userFriendlyMessage = "❌ **API Error (\(code))**\n\n\(message.components(separatedBy: ".").first ?? message)"
         }
-        
+
         addAssistantMessage(userFriendlyMessage)
     }
-    
+
     private func handleOpenAIError(error: [String: Any]) {
         if let message = error["message"] as? String {
             let userFriendlyMessage = "❌ **OpenAI Error**\n\n\(message)"
@@ -1174,7 +1177,7 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage("❌ **OpenAI Error**\n\nAn unknown error occurred with OpenAI.")
         }
     }
-    
+
     private func handleClaudeError(error: [String: Any]) {
         if let message = error["message"] as? String {
             let userFriendlyMessage = "❌ **Claude Error**\n\n\(message)"
@@ -1192,7 +1195,7 @@ extension ScreenAssistantManager: AVAudioRecorderDelegate {
         isRecording = false
         recordingTimer?.invalidate()
         recordingTimer = nil
-        
+
         if flag {
             let fileName = recorder.url.lastPathComponent
             let displayName = "Recording \(DateFormatter.shortTime.string(from: Date()))"
@@ -1204,7 +1207,7 @@ extension ScreenAssistantManager: AVAudioRecorderDelegate {
             print("Recording failed")
         }
     }
-    
+
     func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         print("Recording encode error: \(error?.localizedDescription ?? "Unknown error")")
         isRecording = false

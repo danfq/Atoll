@@ -71,11 +71,14 @@ class ChatMessagesPanel: NSPanel {
         let screenFrame = screen.visibleFrame
         let panelFrame = frame
 
-        // Position on the left side of the screen
-        let xPosition = screenFrame.minX + 50 // 50pt from left edge
-        let yPosition = screenFrame.maxY - panelFrame.height - 100 // 100pt from top
+        // Position in the center-top of the screen
+        let xPosition = (screenFrame.width - panelFrame.width) / 2 + screenFrame.minX
+        let yPosition = screenFrame.maxY - panelFrame.height - 80 // 80pt from top
 
         setFrameOrigin(NSPoint(x: xPosition, y: yPosition))
+
+        // Store our frame for the input panel to use
+        UserDefaults.standard.set(NSStringFromRect(frame), forKey: "messagesPanelFrame")
     }
 
     private func setupScreenCaptureObserver() {
@@ -176,11 +179,22 @@ class ChatInputPanel: NSPanel {
         let screenFrame = screen.visibleFrame
         let panelFrame = frame
 
-        // Position in the center-bottom of the screen (like a search bar)
-        let xPosition = (screenFrame.width - panelFrame.width) / 2 + screenFrame.minX
-        let yPosition = screenFrame.minY + 100 // 100pt from bottom
+        // Check if we have saved messages panel frame
+        let messagesPanelFrameString = UserDefaults.standard.string(forKey: "messagesPanelFrame")
 
-        setFrameOrigin(NSPoint(x: xPosition, y: yPosition))
+        if let frameString = messagesPanelFrameString {
+            let messagesPanelFrame = NSRectFromString(frameString)
+            // Position directly below the messages panel (vertically stacked)
+            let xPosition = (screenFrame.width - panelFrame.width) / 2 + screenFrame.minX
+            let yPosition = messagesPanelFrame.minY - panelFrame.height - 10 // 10px gap
+
+            setFrameOrigin(NSPoint(x: xPosition, y: yPosition))
+        } else {
+            // Fallback positioning
+            let xPosition = (screenFrame.width - panelFrame.width) / 2 + screenFrame.minX
+            let yPosition = screenFrame.maxY - 600 // Position allows space for messages panel
+            setFrameOrigin(NSPoint(x: xPosition, y: yPosition))
+        }
     }
 
     private func setupScreenCaptureObserver() {

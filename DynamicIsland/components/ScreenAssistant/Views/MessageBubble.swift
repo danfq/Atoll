@@ -1,5 +1,5 @@
 //
-//  ChatPanels.swift
+//  MessageBubble.swift
 //  DynamicIsland
 //
 //  Created by DanFQ

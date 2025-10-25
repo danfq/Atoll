@@ -210,93 +210,82 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.alphaValue = 0
         }
 
-        // Use the same centering logic as updateWindowSizeIfNeeded()
-        let screenFrame = screen.frame
-        let centerX = screenFrame.origin.x + (screenFrame.width / 2)
-        let newX = centerX - (window.frame.width / 2)
-        let newY = screenFrame.origin.y + screenFrame.height - window.frame.height
+        // Use the current required size for correct placement
+        let requiredSize = calculateRequiredNotchSize()
+        let newFrame = targetRect(for: screen, size: requiredSize)
 
-        window.setFrame(NSRect(
-            x: newX,
-            y: newY,
-            width: window.frame.width,
-            height: window.frame.height
-        ), display: false)
+        // Set frame synchronously to avoid double animations when a resize is about to occur
+        window.setFrame(newFrame, display: false)
 
         if changeAlpha {
             window.alphaValue = 1
         }
     }
 
-    private func updateWindowSizeIfNeeded() {
+    private func updateWindowSizeIfNeeded(forView view: NotchViews? = nil) {
         // Calculate required size based on current state
-        let requiredSize = calculateRequiredNotchSize()
+        let requiredSize = calculateRequiredNotchSize(forView: view)
+        print("📏 updateWindowSizeIfNeeded called - requiredSize: \(requiredSize), currentView: \(view ?? coordinator.currentView)")
+        print("📏 showOnAllDisplays: \(Defaults[.showOnAllDisplays])")
 
         if Defaults[.showOnAllDisplays] {
             // Update all windows if size has changed (multi-display mode)
             for (screen, window) in windows {
+                print("📏 Multi-display: current window size: \(window.frame.size), required: \(requiredSize)")
                 if window.frame.size != requiredSize {
-                    // Calculate center position BEFORE any changes
-                    let screenFrame = screen.frame
-                    let centerX = screenFrame.origin.x + (screenFrame.width / 2)
-                    let newX = centerX - (requiredSize.width / 2)
-                    let newY = screenFrame.origin.y + screenFrame.height - requiredSize.height
-
-                    // Stop any existing animations first
-                    NSAnimationContext.runAnimationGroup { _ in
-                        window.animator().setFrame(window.frame, display: false)
+                    let newFrame = targetRect(for: screen, size: requiredSize)
+                    guard window.frame != newFrame else {
+                        print("📏 Multi-display: Frame unchanged, skipping animation")
+                        continue
                     }
 
-                    // Animate window resize smoothly
+                    print("📏 Multi-display: Animating from \(window.frame) to \(newFrame)")
                     NSAnimationContext.runAnimationGroup { context in
-                        context.duration = 0.25
+                        context.duration = 0.4
                         context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                         context.allowsImplicitAnimation = true
-                        window.animator().setFrame(NSRect(
-                            x: newX,
-                            y: newY,
-                            width: requiredSize.width,
-                            height: requiredSize.height
-                        ), display: true)
+                        window.animator().setFrame(newFrame, display: true)
                     }
                 }
             }
         } else {
             // Update single window if size has changed (single display mode)
+            if window == nil {
+                print("⚠️ Single-display: window is NIL!")
+                return
+            }
+
+            if let window = window {
+                print("📏 Single-display: current window size: \(window.frame.size), required: \(requiredSize)")
+                print("📏 Single-display: sizes equal? \(window.frame.size == requiredSize)")
+            }
             if let window = window, window.frame.size != requiredSize {
                 // Find the screen this window is on
                 let currentScreen = NSScreen.screens.first { screen in
                     screen.frame.intersects(window.frame)
                 } ?? NSScreen.main ?? NSScreen.screens.first!
 
-                // Calculate center position BEFORE any changes
-                let screenFrame = currentScreen.frame
-                let centerX = screenFrame.origin.x + (screenFrame.width / 2)
-                let newX = centerX - (requiredSize.width / 2)
-                let newY = screenFrame.origin.y + screenFrame.height - requiredSize.height
-
-                // Stop any existing animations first
-                NSAnimationContext.runAnimationGroup { _ in
-                    window.animator().setFrame(window.frame, display: false)
+                let newFrame = targetRect(for: currentScreen, size: requiredSize)
+                guard window.frame != newFrame else {
+                    print("📏 Single-display: Frame unchanged, skipping animation")
+                    return
                 }
 
-                // Animate window resize smoothly
+                print("📏 Single-display: Animating from \(window.frame) to \(newFrame)")
                 NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.25
+                    context.duration = 0.4
                     context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                     context.allowsImplicitAnimation = true
-                    window.animator().setFrame(NSRect(
-                        x: newX,
-                        y: newY,
-                        width: requiredSize.width,
-                        height: requiredSize.height
-                    ), display: true)
+                    window.animator().setFrame(newFrame, display: true)
                 }
             }
         }
     }
 
-    private func calculateRequiredNotchSize() -> CGSize {
+    private func calculateRequiredNotchSize(forView view: NotchViews? = nil) -> CGSize {
+        let currentView = view ?? coordinator.currentView
+        print("🔍 calculateRequiredNotchSize - currentView: \(currentView), enableScreenAssistant: \(Defaults[.enableScreenAssistant])")
+
         // Check if inline sneak peek is showing and notch is closed
         let isInlineSneakPeekActive = vm.notchState == .closed &&
                                       coordinator.expandingView.show &&
@@ -315,30 +304,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Use minimalistic or normal size based on settings
         let baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize : openNotchSize
 
-        // Only apply dynamic sizing when on stats tab and stats are enabled
-        guard coordinator.currentView == .stats && Defaults[.enableStatsFeature] else {
+        // required height - base by default
+        var requiredHeight: CGFloat = baseSize.height
+
+        // Only apply dynamic sizing when on stats tab and stats are enabled - same for assistant
+        guard currentView == .stats && Defaults[.enableStatsFeature]
+                || currentView == .assistant && Defaults[.enableScreenAssistant] else {
+            print("🔍 Guard failed - returning baseSize: \(baseSize)")
             return baseSize
         }
 
-        let enabledGraphsCount = [
-            Defaults[.showCpuGraph],
-            Defaults[.showMemoryGraph],
-            Defaults[.showGpuGraph],
-            Defaults[.showNetworkGraph],
-            Defaults[.showDiskGraph]
-        ].filter { $0 }.count
+        print("🔍 Guard passed - will calculate dynamic size")
 
-        // Calculate height based on layout: 1-3 graphs = single row, 4+ graphs = two rows
-        var requiredHeight = baseSize.height
+        // for stats
+        if currentView == .stats {
+            let enabledGraphsCount = [
+                Defaults[.showCpuGraph],
+                Defaults[.showMemoryGraph],
+                Defaults[.showGpuGraph],
+                Defaults[.showNetworkGraph],
+                Defaults[.showDiskGraph]
+            ].filter { $0 }.count
 
-        if enabledGraphsCount >= 4 {
-            // Two rows needed - add height for second row plus spacing
-            let extraHeight: CGFloat = 120 + 12 // Graph height + spacing
-            requiredHeight = baseSize.height + extraHeight
+            // Calculate height based on layout: 1-3 graphs = single row, 4+ graphs = two rows
+            requiredHeight = baseSize.height
+
+            if enabledGraphsCount >= 4 {
+                // Two rows needed - add height for second row plus spacing
+                let extraHeight: CGFloat = 120 + 12 // Graph height + spacing
+                requiredHeight = baseSize.height + extraHeight
+            }
+        }
+
+        // for assistant
+        if currentView == .assistant {
+            requiredHeight = baseSize.height + 600
+            print("🔍 Assistant view - setting height to: \(requiredHeight)")
         }
 
         // Width stays constant - no horizontal expansion
-        return CGSize(width: baseSize.width, height: requiredHeight)
+        let finalSize = CGSize(width: baseSize.width, height: requiredHeight)
+        print("🔍 Returning final size: \(finalSize)")
+        return finalSize
+    }
+
+    private func targetRect(for screen: NSScreen, size: CGSize) -> NSRect {
+        let screenFrame = screen.frame
+        let centerX = screenFrame.origin.x + (screenFrame.width / 2)
+        let newX = centerX - (size.width / 2)
+        let newY = screenFrame.origin.y + screenFrame.height - size.height
+        return NSRect(x: newX, y: newY, width: size.width, height: size.height)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -364,13 +379,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Setup Privacy Indicator Manager (camera and microphone monitoring)
         PrivacyIndicatorManager.shared.startMonitoring()
 
-        // Observe tab changes - use debounced updates
+        // Observe tab changes - use immediate updates to sync with ContentView animation
         coordinator.$currentView.sink { [weak self] newView in
-            self?.debouncedUpdateWindowSize()
+            print("👀 currentView changed to: \(newView)")
+            self?.updateWindowSizeIfNeeded(forView: newView)
         }.store(in: &cancellables)
 
         // Observe stats settings changes - use debounced updates
         Defaults.publisher(.enableStatsFeature, options: []).sink { [weak self] _ in
+            self?.debouncedUpdateWindowSize()
+        }.store(in: &cancellables)
+
+        // Observe assistant settings changes - use debounced updates
+        Defaults.publisher(.enableScreenAssistant, options: []).sink { [weak self] _ in
             self?.debouncedUpdateWindowSize()
         }.store(in: &cancellables)
 

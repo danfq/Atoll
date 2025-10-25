@@ -38,18 +38,24 @@ struct ContentView: View {
     var dynamicNotchSize: CGSize {
         let baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize : openNotchSize
 
-        guard coordinator.currentView == .stats else {
-            return baseSize
+        // Handle stats view
+        if coordinator.currentView == .stats {
+            let rows = statsRowCount()
+            if rows <= 1 {
+                return baseSize
+            }
+
+            let additionalRows = max(rows - 1, 0)
+            let extraHeight = CGFloat(additionalRows) * statsAdditionalRowHeight
+            return CGSize(width: baseSize.width, height: baseSize.height + extraHeight)
         }
 
-        let rows = statsRowCount()
-        if rows <= 1 {
-            return baseSize
+        // Handle assistant view
+        if coordinator.currentView == .assistant && Defaults[.enableScreenAssistant] {
+            return CGSize(width: baseSize.width, height: baseSize.height + 600)
         }
 
-        let additionalRows = max(rows - 1, 0)
-        let extraHeight = CGFloat(additionalRows) * statsAdditionalRowHeight
-        return CGSize(width: baseSize.width, height: baseSize.height + extraHeight)
+        return baseSize
     }
 
 

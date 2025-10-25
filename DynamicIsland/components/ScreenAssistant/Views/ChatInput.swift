@@ -1,5 +1,5 @@
 //
-//  ChatPanels.swift
+//  ChatInput.swift
 //  DynamicIsland
 //
 //  Created by DanFQ
@@ -93,15 +93,6 @@ struct ChatInputView: View {
                     .onSubmit {
                         sendMessage()
                     }
-
-                // Model selection button
-                Button(action: openModelSelection) {
-                    Image(systemName: "brain.head.profile.fill")
-                        .foregroundColor(.purple)
-                        .font(.system(size: 20))
-                }
-                .buttonStyle(PlainButtonStyle())
-                .help("Choose AI model")
 
                 // Recording button
                 RecordingButton()

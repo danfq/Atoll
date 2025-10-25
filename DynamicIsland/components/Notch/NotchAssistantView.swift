@@ -5,7 +5,7 @@ struct NotchAssistantView: View {
     @ObservedObject var tvm = TrayDrop.shared
 
     var body: some View {
-        HStack {
+        VStack {
             // Chats List Panel
             ChatMessagesView()
 
