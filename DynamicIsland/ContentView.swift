@@ -690,7 +690,7 @@ struct ContentView: View {
                         self.isHovering = false
                     }
 
-                    if self.vm.notchState == .open && !self.hasAnyActivePopovers() {
+                    if self.vm.notchState == .open && !self.hasAnyActivePopovers() && self.coordinator.currentView != .assistant {
                         self.vm.close()
                     }
                 }
@@ -726,7 +726,7 @@ struct ContentView: View {
         // Check if we should close after a delay
         let hasPopovers = hasAnyActivePopovers()
 
-        if vm.notchState == .open && !hasPopovers {
+        if vm.notchState == .open && !hasPopovers && coordinator.currentView != .assistant {
             let isStatsTab = coordinator.currentView == .stats
             let hasExpandedHeight = isStatsTab && statsTabHasExpandedHeight()
 
@@ -746,8 +746,9 @@ struct ContentView: View {
                 let stillOpen = vm.notchState == .open
                 let stillNoPopovers = !hasAnyActivePopovers()
                 let notTransitioning = !isStatsTransitioning && !isSwitchingToStats
+                let notAssistant = coordinator.currentView != .assistant
 
-                if stillNotHovering && stillOpen && stillNoPopovers && notTransitioning {
+                if stillNotHovering && stillOpen && stillNoPopovers && notTransitioning && notAssistant {
                     vm.close()
                 }
             }
