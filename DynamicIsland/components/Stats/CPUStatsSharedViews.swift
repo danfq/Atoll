@@ -16,7 +16,7 @@ struct StatsCard<Content: View>: View {
     let background: Color
     let cornerRadius: CGFloat
     let content: Content
-    
+
     init(
         title: String,
         padding: CGFloat = 16,
@@ -30,13 +30,13 @@ struct StatsCard<Content: View>: View {
         self.cornerRadius = cornerRadius
         self.content = content()
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.headline)
                 .foregroundStyle(.primary)
-            
+
             content
         }
         .padding(padding)
@@ -62,7 +62,7 @@ struct CPUUsageDashboard: View {
     let idleColor: Color
     let temperature: CPUTemperatureMetrics
     let frequency: CPUFrequencyMetrics?
-    
+
     var body: some View {
         let usageSection = VStack(alignment: .leading, spacing: 12) {
             Text("Usage")
@@ -74,7 +74,7 @@ struct CPUUsageDashboard: View {
             DetailRow(color: nil, label: "Active", value: StatsFormatting.percentage(breakdown.activeUsage))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        
+
         let systemSection = VStack(alignment: .leading, spacing: 10) {
             Text("System")
                 .font(.caption)
@@ -99,7 +99,7 @@ struct CPUUsageDashboard: View {
             temperatureTint: Color(red: 0.98, green: 0.53, blue: 0.18)
         )
         .frame(maxWidth: .infinity, alignment: .center)
-        
+
         return ViewThatFits(in: .horizontal) {
             VStack(alignment: .leading, spacing: 20) {
                 primaryGauges
@@ -231,7 +231,7 @@ private struct CPUSegmentDonut: View {
     let idleColor: Color
     var diameter: CGFloat = 132
     var lineWidth: CGFloat = 14
-    
+
     var body: some View {
         ZStack {
             Circle()
@@ -260,7 +260,7 @@ struct CPUUsageRing: View {
     let systemColor: Color
     let userColor: Color
     var lineWidth: CGFloat = 14
-    
+
     var body: some View {
         let segments = breakdown.normalizedSegments
         ZStack {
@@ -279,7 +279,7 @@ struct RingArc: View {
     let end: Double
     let color: Color
     var lineWidth: CGFloat = 14
-    
+
     var body: some View {
         Circle()
             .trim(from: CGFloat(start), to: CGFloat(end))
@@ -292,7 +292,7 @@ struct LegendRow: View {
     let color: Color
     let title: String
     let value: String
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Circle()
@@ -311,7 +311,7 @@ struct LegendRow: View {
 
 struct LoadAverageRow: View {
     let loadAverage: LoadAverage
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Load Average")
@@ -329,7 +329,7 @@ struct LoadAverageRow: View {
 struct LoadAverageValue: View {
     let label: String
     let value: Double
-    
+
     var body: some View {
         VStack(spacing: 2) {
             Text(label)
@@ -346,7 +346,7 @@ struct DetailRow: View {
     let color: Color?
     let label: String
     let value: String
-    
+
     var body: some View {
         HStack {
             if let color {
@@ -462,27 +462,49 @@ struct CPUDetailsGrid: View {
     }
 }
 
-
 struct CPUProcessList: View {
     let processes: [ProcessStats]
     let accentColor: Color
     var displayLimit: Int? = nil
-    
+    @State var orderBy: OrderBy = .cpuUsage
+
     private var visibleProcesses: [ProcessStats] {
+        // processes ordered by selected order
+        let sorted = processes.sorted(by: {
+            switch orderBy {
+                case .cpuUsage:
+                    return $0.cpuUsage > $1.cpuUsage
+                case .mbExact:
+                    return $0.memoryUsage > $1.memoryUsage
+            }
+        })
+
+        // limit
         if let limit = displayLimit {
-            return Array(processes.prefix(limit))
+            return Array(sorted.prefix(limit))
         }
-        return processes
+
+        return sorted
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
+            // order by picker
+            Picker("Order by", selection: $orderBy) {
+                Text("Memory Usage").tag(OrderBy.mbExact)
+                Text("CPU Usage").tag(OrderBy.cpuUsage)
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.vertical, 16)
+
+            // processes
             if visibleProcesses.isEmpty {
                 Text("No process data yet. Keep stats open for a moment.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
+                // order processes by mb or %
                 ForEach(visibleProcesses) { process in
                     CPUProcessRow(process: process, accentColor: accentColor)
                     if process.id != visibleProcesses.last?.id {
@@ -497,7 +519,7 @@ struct CPUProcessList: View {
 struct CPUProcessRow: View {
     let process: ProcessStats
     let accentColor: Color
-    
+
     var body: some View {
         HStack(spacing: 12) {
             iconView
@@ -507,7 +529,7 @@ struct CPUProcessRow: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
                 )
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(process.name)
                     .font(.system(size: 13, weight: .semibold))
@@ -517,15 +539,15 @@ struct CPUProcessRow: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
-            
+
             Spacer()
-            
+
             Text(process.cpuUsageString)
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundColor(accentColor)
         }
     }
-    
+
     private var iconView: some View {
         Group {
             if let icon = process.icon {
