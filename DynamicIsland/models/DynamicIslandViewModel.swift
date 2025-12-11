@@ -8,8 +8,8 @@
 import Combine
 import Defaults
 import SwiftUI
-import TheBoringWorkerNotifier
 
+@MainActor
 class DynamicIslandViewModel: NSObject, ObservableObject {
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     @ObservedObject var detector = FullscreenMediaDetector.shared
@@ -32,6 +32,9 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
     @Published var isClipboardPopoverActive: Bool = false
     @Published var isColorPickerPopoverActive: Bool = false
     @Published var isStatsPopoverActive: Bool = false
+    @Published var isReminderPopoverActive: Bool = false
+    @Published var isMediaOutputPopoverActive: Bool = false
+    @Published var isTimerPopoverActive: Bool = false
     @Published var shouldRecheckHover: Bool = false
     
     let webcamManager = WebcamManager.shared
@@ -43,6 +46,7 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
     @Published var notchSize: CGSize = getClosedNotchSize()
     @Published var closedNotchSize: CGSize = getClosedNotchSize()
     
+    @MainActor
     deinit {
         destroy()
     }
@@ -69,6 +73,122 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
         
         setupDetectorObserver()
+
+        ReminderLiveActivityManager.shared.$activeWindowReminders
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let updatedTarget = self.calculateDynamicNotchSize()
+                guard self.notchState == .open else { return }
+                guard self.notchSize != updatedTarget else { return }
+                withAnimation(.smooth) {
+                    self.notchSize = updatedTarget
+                }
+                if let delegate = AppDelegate.shared {
+                    delegate.ensureWindowSize(
+                        addShadowPadding(to: updatedTarget, isMinimalistic: Defaults[.enableMinimalisticUI]),
+                        animated: true,
+                        force: false
+                    )
+                }
+            }
+            .store(in: &cancellables)
+
+        // Observe settings + lyrics changes to dynamically resize the notch
+        let enableLyricsPublisher = Defaults.publisher(.enableLyrics).map { $0.newValue }
+
+        enableLyricsPublisher
+            .combineLatest(MusicManager.shared.$currentLyrics)
+            .removeDuplicates { $0.0 == $1.0 && $0.1 == $1.1 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                guard Defaults[.enableMinimalisticUI] else { return }
+                let updatedTarget = self.calculateDynamicNotchSize()
+                guard self.notchState == .open else { return }
+                guard self.notchSize != updatedTarget else { return }
+                withAnimation(.smooth) {
+                    self.notchSize = updatedTarget
+                }
+                if let delegate = AppDelegate.shared {
+                    delegate.ensureWindowSize(
+                        addShadowPadding(to: updatedTarget, isMinimalistic: Defaults[.enableMinimalisticUI]),
+                        animated: true,
+                        force: false
+                    )
+                }
+            }
+            .store(in: &cancellables)
+
+        TimerManager.shared.$activeSource
+            .combineLatest(TimerManager.shared.$isTimerActive)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _ in
+                self?.handleMinimalisticTimerHeightChange()
+            }
+            .store(in: &cancellables)
+
+        coordinator.$statsSecondRowExpansion
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                guard self.notchState == .open else { return }
+                let updatedTarget = self.calculateDynamicNotchSize()
+                guard self.notchSize != updatedTarget else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    self.notchSize = updatedTarget
+                }
+                if let delegate = AppDelegate.shared {
+                    delegate.ensureWindowSize(
+                        addShadowPadding(to: updatedTarget, isMinimalistic: Defaults[.enableMinimalisticUI]),
+                        animated: false,
+                        force: false
+                    )
+                }
+            }
+            .store(in: &cancellables)
+
+        Defaults.publisher(.openNotchWidth, options: [])
+            .map { $0.newValue }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                guard self.notchState == .open else { return }
+                guard !Defaults[.enableMinimalisticUI] else { return }
+                let updatedTarget = self.calculateDynamicNotchSize()
+                guard self.notchSize != updatedTarget else { return }
+                withAnimation(.smooth) {
+                    self.notchSize = updatedTarget
+                }
+                if let delegate = AppDelegate.shared {
+                    delegate.ensureWindowSize(
+                        addShadowPadding(to: updatedTarget, isMinimalistic: false),
+                        animated: true,
+                        force: false
+                    )
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleMinimalisticTimerHeightChange() {
+        guard Defaults[.enableMinimalisticUI] else { return }
+        guard notchState == .open else { return }
+        let updatedTarget = calculateDynamicNotchSize()
+        guard notchSize != updatedTarget else { return }
+        withAnimation(.smooth) {
+            notchSize = updatedTarget
+        }
+        if let delegate = AppDelegate.shared {
+            delegate.ensureWindowSize(
+                addShadowPadding(to: updatedTarget, isMinimalistic: Defaults[.enableMinimalisticUI]),
+                animated: true,
+                force: false
+            )
+        }
     }
     
     private func setupDetectorObserver() {
@@ -122,11 +242,26 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
     }
 
     func open() {
-        withAnimation(.bouncy) {
-            self.notchSize = calculateDynamicNotchSize()
-            self.notchState = .open
+        let targetSize = calculateDynamicNotchSize()
+
+        let applyWindowResize: () -> Void = {
+            guard let delegate = AppDelegate.shared else { return }
+            delegate.ensureWindowSize(
+                addShadowPadding(to: targetSize, isMinimalistic: Defaults[.enableMinimalisticUI]),
+                animated: false,
+                force: true
+            )
         }
-        
+
+        if Thread.isMainThread {
+            applyWindowResize()
+        } else {
+            DispatchQueue.main.async(execute: applyWindowResize)
+        }
+
+        notchSize = targetSize
+        notchState = .open
+
         // Force music information update when notch is opened
         MusicManager.shared.forceUpdate()
     }
@@ -134,40 +269,22 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
     private func calculateDynamicNotchSize() -> CGSize {
         // Use minimalistic size if minimalistic UI is enabled
         let baseSize = Defaults[.enableMinimalisticUI] ? minimalisticOpenNotchSize : openNotchSize
-        
-        // Only apply dynamic sizing when on stats tab and stats are enabled
-        guard DynamicIslandViewCoordinator.shared.currentView == .stats && Defaults[.enableStatsFeature] else {
-            return baseSize
-        }
-        
-        let enabledGraphsCount = [
-            Defaults[.showCpuGraph],
-            Defaults[.showMemoryGraph], 
-            Defaults[.showGpuGraph],
-            Defaults[.showNetworkGraph],
-            Defaults[.showDiskGraph]
-        ].filter { $0 }.count
-        
-        // If 4+ graphs are enabled, increase width
-        if enabledGraphsCount >= 4 {
-            let extraWidth: CGFloat = CGFloat(enabledGraphsCount - 3) * 120
-            return CGSize(width: baseSize.width + extraWidth, height: baseSize.height)
-        }
-        
-        return baseSize
+        return statsAdjustedNotchSize(
+            from: baseSize,
+            isStatsTabActive: DynamicIslandViewCoordinator.shared.currentView == .stats,
+            secondRowProgress: coordinator.statsSecondRowExpansion
+        )
     }
 
     func close() {
-        withAnimation(.smooth) { [weak self] in
-            guard let self = self else { return }
-            self.notchSize = getClosedNotchSize(screen: self.screen)
-            self.closedNotchSize = self.notchSize
-            self.notchState = .closed
-        }
+        let targetSize = getClosedNotchSize(screen: screen)
+        notchSize = targetSize
+        closedNotchSize = targetSize
+        notchState = .closed
 
         // Set the current view to shelf if it contains files and the user enables openShelfByDefault
         // Otherwise, if the user has not enabled openLastShelfByDefault, set the view to home
-        if !TrayDrop.shared.isEmpty && Defaults[.openShelfByDefault] {
+        if !ShelfStateViewModel.shared.isEmpty && Defaults[.openShelfByDefault] {
             coordinator.currentView = .shelf
         } else if !coordinator.openLastTabByDefault {
             coordinator.currentView = .home

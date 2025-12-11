@@ -8,38 +8,63 @@
 import SwiftUI
 import Defaults
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
+// Lyrics are shown/hidden only via Defaults[.enableLyrics] in settings. Inline display is used in the player views.
+
 struct MinimalisticMusicPlayerView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
     let albumArtNamespace: Namespace.ID
+    @Default(.musicAuxLeftControl) private var leftAuxControl
+    @Default(.musicAuxRightControl) private var rightAuxControl
+    @Default(.musicSkipBehavior) private var musicSkipBehavior
+    @ObservedObject private var reminderManager = ReminderLiveActivityManager.shared
+    @ObservedObject private var timerManager = TimerManager.shared
+    @ObservedObject private var coordinator = DynamicIslandViewCoordinator.shared
+    @Default(.enableReminderLiveActivity) private var enableReminderLiveActivity
+    @Default(.enableLyrics) private var enableLyrics
+    @Default(.timerPresets) private var timerPresets
 
     var body: some View {
         VStack(spacing: 0) {
             // Header area with album art (matching DynamicIslandHeader height of 24pt)
-            HStack(alignment: .center, spacing: 10) {
-                MinimalisticAlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace)
-                    .frame(width: 50, height: 50)
-                
-                // Song info aligned to bottom of album art
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(MusicManager.shared.songTitle)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    Text(MusicManager.shared.artistName)
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: MusicManager.shared.avgColor).ensureMinimumBrightness(factor: 0.6) : .gray)
-                        .lineLimit(1)
-                }
-                
-                Spacer()
-                
-                // Visualizer aligned to bottom
-                if useMusicVisualizer {
-                    visualizer
+            GeometryReader { headerGeo in
+                let albumArtWidth: CGFloat = 50
+                let spacing: CGFloat = 10
+                let visualizerWidth: CGFloat = useMusicVisualizer ? 24 : 0
+                let textWidth = max(0, headerGeo.size.width - albumArtWidth - spacing - (useMusicVisualizer ? (visualizerWidth + spacing) : 0))
+                HStack(alignment: .center, spacing: spacing) {
+                    MinimalisticAlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace)
+                        .frame(width: albumArtWidth, height: albumArtWidth)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        if !musicManager.songTitle.isEmpty {
+                            MarqueeText(
+                                $musicManager.songTitle,
+                                font: .system(size: 12, weight: .semibold),
+                                nsFont: .subheadline,
+                                textColor: .white,
+                                frameWidth: textWidth
+                            )
+                        }
+
+                        Text(musicManager.artistName)
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.6) : .gray)
+                            .lineLimit(1)
+
+                    }
+                    .frame(width: textWidth, alignment: .leading)
+
+                    if useMusicVisualizer {
+                        visualizer
+                            .frame(width: visualizerWidth)
+                    }
                 }
             }
-            .frame(height: 50) // Fixed height to accommodate album art
+            .frame(height: 50)
             
             // Compact progress bar
             progressBar
@@ -48,13 +73,513 @@ struct MinimalisticMusicPlayerView: View {
             // Compact playback controls
             playbackControls
                 .padding(.top, 4)
+
+            if enableLyrics {
+                lyricsView
+                    .padding(.top, 10)
+            }
+
+            timerCountdownSection
+
+            reminderList
         }
         .padding(.horizontal, 12)
         .padding(.top, -15)
-        .padding(.bottom, 3)
+        .padding(.bottom, ReminderLiveActivityManager.baselineMinimalisticBottomPadding)
         .frame(maxWidth: .infinity)
+        .frame(height: calculateDynamicHeight(), alignment: .top)
+        .animation(.smooth(duration: 0.3), value: dynamicHeightSignature)
+    }
+
+    // MARK: - TypingLyricView
+
+    struct TypingLyricView: View {
+        let text: String
+        let color: Color
+        let id: Int
+        let playbackRate: Double
+        let isPlaying: Bool
+        @State private var displayed: String = ""
+        @State private var lastText: String = ""
+        @State private var animationTask: Task<Void, Never>?
+
+        var body: some View {
+            Text(displayed)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(color)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+                .id(id)
+                .onChange(of: text) { _, newText in
+                    animateTyping(newText)
+                }
+                .onChange(of: isPlaying) { _, playing in
+                    if !playing {
+                        animationTask?.cancel()
+                    } else if displayed != text {
+                        animateTyping(text)
+                    }
+                }
+                .onAppear {
+                    animateTyping(text)
+                }
+                .onDisappear {
+                    animationTask?.cancel()
+                }
+        }
+
+        private func animateTyping(_ newText: String) {
+            animationTask?.cancel()
+            displayed = ""
+            lastText = newText
+            let chars = Array(newText)
+
+            animationTask = Task {
+                for (i, c) in chars.enumerated() {
+                    if Task.isCancelled { return }
+                    try? await Task.sleep(for: .milliseconds(Int(30 / max(playbackRate, 0.1))))
+                    if Task.isCancelled { return }
+                    if lastText == newText {
+                        displayed += String(c)
+                    }
+                }
+            }
+        }
+    }
+
+    private var reminderEntries: [ReminderLiveActivityManager.ReminderEntry] {
+        reminderManager.activeWindowReminders
+    }
+
+    private var shouldShowReminderList: Bool {
+        enableReminderLiveActivity && !reminderEntries.isEmpty
+    }
+
+    private var reminderListHeight: CGFloat {
+        ReminderLiveActivityManager.additionalHeight(forRowCount: reminderEntries.count)
+    }
+
+    private var shouldShowTimerCountdown: Bool {
+        coordinator.timerLiveActivityEnabled && timerManager.isExternalTimerActive
+    }
+
+    private var timerCountdownColor: Color {
+        let baseColor: Color
+        if let presetId = timerManager.activePresetId,
+           let preset = timerPresets.first(where: { $0.id == presetId }) {
+            baseColor = preset.color
+        } else {
+            baseColor = timerManager.timerColor
+        }
+        return baseColor.ensureMinimumBrightness(factor: 0.75)
+    }
+
+    private var timerCountdownText: String {
+        timerManager.formattedRemainingTime()
+    }
+
+    private var timerDisplayName: String {
+        let trimmed = timerManager.timerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Timer" : trimmed
+    }
+
+    private var dynamicHeightSignature: Int {
+        var signature = reminderEntries.count * 10
+        if enableLyrics { signature += 1 }
+        if shouldShowTimerCountdown { signature += 100 }
+        return signature
+    }
+
+    private func calculateDynamicHeight() -> CGFloat {
+        var height: CGFloat = 50 // Base height for header
+
+        // Add progress bar height
+        height += 6 + 4 // progress bar + top padding
+
+        // Add playback controls height
+        height += 40 + 2 // controls + top padding
+
+        // Add lyrics height if enabled in settings (reserve space even while loading)
+        if enableLyrics {
+            let lyricsTopPadding: CGFloat = 10
+            let lyricsEstimatedHeight: CGFloat = 34
+            height += lyricsTopPadding + lyricsEstimatedHeight
+        }
+
+        if shouldShowTimerCountdown {
+            height += minimalisticTimerCountdownBlockHeight
+        }
+
+        // Add reminder list height if showing
+        if shouldShowReminderList {
+            height += reminderListHeight
+        }
+
+        // Add padding
+        height += 15 // top padding
+        height += ReminderLiveActivityManager.baselineMinimalisticBottomPadding
+
+        return height
+    }
+
+    private var timerCountdownSection: some View {
+        VStack(spacing: 0) {
+            if shouldShowTimerCountdown {
+                timerCountdownView
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.top, shouldShowTimerCountdown ? minimalisticTimerCountdownTopPadding : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: shouldShowTimerCountdown ? minimalisticTimerCountdownBlockHeight : 0, alignment: .top)
+        .animation(.smooth(duration: 0.25), value: shouldShowTimerCountdown)
+    }
+
+    private func displayFont(size: CGFloat) -> Font {
+        .custom("SF Pro Display", size: size)
+    }
+
+    private var timerCountdownView: some View {
+        GeometryReader { geometry in
+            let availableWidth = geometry.size.width
+            let preferredCountdownWidth = max(availableWidth * 0.42, 150)
+            let maxCountdownWidth = max(availableWidth - 60, 0)
+            let countdownWidth = min(preferredCountdownWidth, maxCountdownWidth)
+            let marqueeWidth = max(availableWidth - countdownWidth - 12, 0)
+
+            HStack(alignment: .lastTextBaseline, spacing: 12) {
+                MarqueeText(
+                    .init(get: { timerDisplayName }, set: { _ in }),
+                    font: .system(size: 16, weight: .semibold),
+                    nsFont: .title3,
+                    textColor: timerCountdownColor.opacity(0.85),
+                    frameWidth: max(marqueeWidth, 1)
+                )
+                .alignmentGuide(.lastTextBaseline) { dimensions in
+                    dimensions[VerticalAlignment.bottom]
+                }
+
+                Spacer(minLength: 8)
+
+                Text(timerCountdownText)
+                    .font(displayFont(size: 56))
+                    .monospacedDigit()
+                    .foregroundStyle(timerManager.isOvertime ? Color.red : timerCountdownColor)
+                    .contentTransition(.numericText())
+                    .animation(.smooth(duration: 0.25), value: timerManager.remainingTime)
+                    .lineLimit(1)
+                    .frame(width: countdownWidth, alignment: .trailing)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 4)
+        .frame(height: minimalisticTimerCountdownContentHeight, alignment: .top)
+    }
+
+    private var reminderList: some View {
+        MinimalisticReminderEventListView(reminders: reminderEntries)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: reminderListHeight, alignment: .top)
+            .opacity(shouldShowReminderList ? 1 : 0)
+            .animation(.easeInOut(duration: 0.18), value: shouldShowReminderList)
+            .environmentObject(vm)
+    }
+
+    private var lyricsView: some View {
+        let line = musicManager.currentLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        let transition: AnyTransition = .asymmetric(
+            insertion: .move(edge: .bottom).combined(with: .opacity),
+            removal: .move(edge: .top).combined(with: .opacity)
+        )
+
+        return HStack(spacing: 6) {
+            if !line.isEmpty {
+                Image(systemName: "music.note")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .symbolRenderingMode(.monochrome)
+
+                Text(line)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.88))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 6)
+                    .id(line)
+                    .transition(transition)
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.smooth(duration: 0.32), value: line)
     }
     
+
+private struct MinimalisticReminderEventListView: View {
+    let reminders: [ReminderLiveActivityManager.ReminderEntry]
+
+    private let textFont = Font.system(size: 13, weight: .semibold)
+    private let separatorSpacing: CGFloat = 10
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ReminderLiveActivityManager.listRowSpacing) {
+            ForEach(reminders) { entry in
+                MinimalisticReminderEventRow(entry: entry, textFont: textFont, separatorSpacing: separatorSpacing)
+            }
+        }
+        .padding(.top, ReminderLiveActivityManager.listTopPadding)
+    }
+}
+
+private struct MinimalisticReminderEventRow: View {
+    let entry: ReminderLiveActivityManager.ReminderEntry
+    let textFont: Font
+    let separatorSpacing: CGFloat
+
+    @EnvironmentObject private var vm: DynamicIslandViewModel
+    @State private var didCopyLink = false
+    @State private var copyResetToken: UUID?
+    @State private var isDetailsPopoverPresented = false
+    @State private var isHoveringDetailsPopover = false
+
+    private let indicatorHeight: CGFloat = 20
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    var body: some View {
+        HStack(spacing: separatorSpacing) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(eventColor)
+                .frame(width: 8, height: indicatorHeight)
+
+            HStack(spacing: 6) {
+                Text(entry.event.title)
+                    .font(textFont)
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+
+                if let timeText {
+                    Text(timeText)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: separatorSpacing) {
+                if let url = linkURL {
+                    Button {
+                        copyToClipboard(url: url)
+                        triggerCopyFeedback()
+                    } label: {
+                        Image(systemName: didCopyLink ? "checkmark.circle.fill" : "link")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(didCopyLink ? Color.green : Color.white.opacity(0.85))
+                            .symbolRenderingMode(.monochrome)
+                            .animation(.easeInOut(duration: 0.2), value: didCopyLink)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy event link")
+                }
+
+                if hasDetails {
+                    Button {
+                        isDetailsPopoverPresented.toggle()
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $isDetailsPopoverPresented, arrowEdge: .top) {
+                        MinimalisticReminderDetailsView(
+                            entry: entry,
+                            linkURL: linkURL,
+                            onHoverChanged: { hovering in
+                                isHoveringDetailsPopover = hovering
+                                updatePopoverActivity()
+                            }
+                        )
+                        .onDisappear {
+                            isHoveringDetailsPopover = false
+                            updatePopoverActivity()
+                        }
+                    }
+                    .onChange(of: isDetailsPopoverPresented) { _, presented in
+                        if !presented {
+                            isHoveringDetailsPopover = false
+                            updatePopoverActivity()
+                        }
+                    }
+                }
+            }
+        }
+        .frame(height: ReminderLiveActivityManager.listRowHeight)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            openInCalendar()
+        }
+        .onDisappear {
+            copyResetToken = nil
+            didCopyLink = false
+            vm.isReminderPopoverActive = false
+        }
+    }
+
+    private var eventColor: Color {
+        Color(nsColor: entry.event.calendar.color).ensureMinimumBrightness(factor: 0.7)
+    }
+
+    private var hasDetails: Bool {
+        let location = entry.event.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let notes = entry.event.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !location.isEmpty || !notes.isEmpty
+    }
+
+    private var linkURL: URL? {
+        entry.event.url ?? entry.event.calendarAppURL()
+    }
+
+    private var timeText: String? {
+        Self.timeFormatter.string(from: entry.event.start)
+    }
+
+    private func updatePopoverActivity() {
+        vm.isReminderPopoverActive = isDetailsPopoverPresented && isHoveringDetailsPopover
+    }
+
+    private func triggerCopyFeedback() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+            didCopyLink = true
+        }
+
+        let token = UUID()
+        copyResetToken = token
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [token] in
+            guard copyResetToken == token else { return }
+
+            withAnimation(.easeInOut(duration: 0.2)) {
+                didCopyLink = false
+            }
+
+            if copyResetToken == token {
+                copyResetToken = nil
+            }
+        }
+    }
+
+    private func copyToClipboard(url: URL) {
+#if canImport(AppKit)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url.absoluteString, forType: .string)
+#endif
+    }
+
+    private func openInCalendar() {
+#if canImport(AppKit)
+        guard let url = linkURL else { return }
+        NSWorkspace.shared.open(url)
+#endif
+    }
+}
+
+private struct MinimalisticReminderDetailsView: View {
+    let entry: ReminderLiveActivityManager.ReminderEntry
+    let linkURL: URL?
+    var onHoverChanged: (Bool) -> Void = { _ in }
+
+    private let detailFont = Font.system(size: 13, weight: .regular)
+    private let smallLabelFont = Font.system(size: 12, weight: .semibold)
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(entry.event.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .lineLimit(2)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let timeRange = timeRangeText {
+                    detailRow(icon: "clock", label: "Time", value: timeRange)
+                }
+
+                if let location = entry.event.location, !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    detailRow(icon: "mappin.and.ellipse", label: "Location", value: location)
+                }
+
+                if let notes = entry.event.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    detailRow(icon: "note.text", label: "Notes", value: notes)
+                }
+            }
+
+            if let url = linkURL {
+                Button {
+                    open(url: url)
+                } label: {
+                    Label("Open in Calendar", systemImage: "arrow.up.right.square")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.link)
+                .foregroundStyle(Color.accentColor)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 220)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.black.opacity(0.92))
+        )
+        .onHover { hovering in
+            onHoverChanged(hovering)
+        }
+        .onDisappear {
+            onHoverChanged(false)
+        }
+    }
+
+    private func detailRow(icon: String, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(label, systemImage: icon)
+                .font(smallLabelFont)
+                .foregroundStyle(Color.white.opacity(0.8))
+            Text(value)
+                .font(detailFont)
+                .foregroundStyle(Color.white)
+        }
+    }
+
+    private var timeRangeText: String? {
+        let startText = Self.timeFormatter.string(from: entry.event.start)
+        let endText = Self.timeFormatter.string(from: entry.event.end)
+        return startText == endText ? startText : "\(startText) – \(endText)"
+    }
+
+    private func open(url: URL) {
+#if canImport(AppKit)
+        NSWorkspace.shared.open(url)
+#endif
+    }
+}
     // MARK: - Visualizer
     
     @Default(.useMusicVisualizer) var useMusicVisualizer
@@ -78,113 +603,110 @@ struct MinimalisticMusicPlayerView: View {
     @State private var lastDragged: Date = .distantPast
     
     private var progressBar: some View {
-        TimelineView(.animation(minimumInterval: musicManager.playbackRate > 0 ? 0.1 : nil)) { timeline in
-            let currentElapsed = currentSliderValue(timeline.date)
-            
-            HStack(spacing: 8) {
-                // Elapsed time - left
-                Text(formatTime(dragging ? sliderValue : currentElapsed))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 42, alignment: .leading)
-                
-                // Progress bar
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // Background track
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white.opacity(0.2))
-                            .frame(height: 6)
-                        
-                        // Filled portion
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(sliderColor)
-                            .frame(width: max(0, geometry.size.width * (currentSliderValue(timeline.date) / max(musicManager.songDuration, 1))), height: 6)
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                dragging = true
-                                let newValue = min(max(0, Double(value.location.x / geometry.size.width) * musicManager.songDuration), musicManager.songDuration)
-                                sliderValue = newValue
-                                lastDragged = Date()
-                            }
-                            .onEnded { _ in
-                                musicManager.seek(to: sliderValue)
-                                dragging = false
-                            }
-                    )
-                }
-                .frame(height: 6)
-                
-                // Time remaining - right
-                Text("-\(formatTime(musicManager.songDuration - (dragging ? sliderValue : currentElapsed)))")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 48, alignment: .trailing)
-            }
+        TimelineView(
+            .animation(
+                minimumInterval: (!musicManager.isLiveStream && musicManager.playbackRate > 0) ? 0.1 : nil
+            )
+        ) { timeline in
+            MusicSliderView(
+                sliderValue: $sliderValue,
+                duration: Binding(
+                    get: { musicManager.songDuration },
+                    set: { musicManager.songDuration = $0 }
+                ),
+                lastDragged: $lastDragged,
+                color: musicManager.avgColor,
+                dragging: $dragging,
+                currentDate: timeline.date,
+                timestampDate: musicManager.timestampDate,
+                elapsedTime: musicManager.elapsedTime,
+                playbackRate: musicManager.playbackRate,
+                isPlaying: musicManager.isPlaying,
+                isLiveStream: musicManager.isLiveStream,
+                onValueChange: { newValue in
+                    musicManager.seek(to: newValue)
+                },
+                labelLayout: .inline,
+                trailingLabel: .remaining,
+                restingTrackHeight: 7,
+                draggingTrackHeight: 11
+            )
         }
         .onAppear {
             sliderValue = musicManager.elapsedTime
         }
-    }
-    
-    private func currentSliderValue(_ date: Date) -> Double {
-        if dragging {
-            return sliderValue
-        }
-        
-        // Update slider value based on playback
-        if musicManager.isPlaying {
-            let timeSinceLastUpdate = date.timeIntervalSince(musicManager.timestampDate)
-            let estimatedElapsed = musicManager.elapsedTime + (timeSinceLastUpdate * musicManager.playbackRate)
-            return min(estimatedElapsed, musicManager.songDuration)
-        }
-        
-        return musicManager.elapsedTime
-    }
-    
-    private var sliderColor: Color {
-        switch Defaults[.sliderColor] {
-        case .white:
-            return .white
-        case .albumArt:
-            return Color(nsColor: musicManager.avgColor)
-        case .accent:
-            return .accentColor
+        .onChange(of: musicManager.isLiveStream) { _, isLive in
+            if isLive {
+                dragging = false
+                sliderValue = 0
+            }
         }
     }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-    
+
     // MARK: - Playback Controls (Larger)
     
     private var playbackControls: some View {
-        HStack(spacing: 20) {
+        let controls = resolvedAuxControls
+        let seekInterval: TimeInterval = 10
+        let skipPressMagnitude: CGFloat = 8
+
+        let backwardConfig: (icon: String, press: MinimalisticSquircircleButton.PressEffect, symbol: MinimalisticSquircircleButton.SymbolEffectStyle, action: () -> Void)
+        let forwardConfig: (icon: String, press: MinimalisticSquircircleButton.PressEffect, symbol: MinimalisticSquircircleButton.SymbolEffectStyle, action: () -> Void)
+
+        switch musicSkipBehavior {
+        case .track:
+            backwardConfig = (
+                icon: "backward.fill",
+                press: .nudge(-skipPressMagnitude),
+                symbol: .replace,
+                action: { musicManager.previousTrack() }
+            )
+            forwardConfig = (
+                icon: "forward.fill",
+                press: .nudge(skipPressMagnitude),
+                symbol: .replace,
+                action: { musicManager.nextTrack() }
+            )
+        case .tenSecond:
+            backwardConfig = (
+                icon: "gobackward.10",
+                press: .wiggle(.counterClockwise),
+                symbol: .wiggle,
+                action: { musicManager.seek(by: -seekInterval) }
+            )
+            forwardConfig = (
+                icon: "goforward.10",
+                press: .wiggle(.clockwise),
+                symbol: .wiggle,
+                action: { musicManager.seek(by: seekInterval) }
+            )
+        }
+
+        return HStack(spacing: 16) {
             if Defaults[.showShuffleAndRepeat] {
-                controlButton(icon: "shuffle", isActive: musicManager.isShuffled) {
-                    Task { await musicManager.toggleShuffle() }
-                }
+                auxButton(for: controls.left)
             }
-            
-            controlButton(icon: "backward.fill", size: 18) {
-                Task { await musicManager.previousTrack() }
-            }
-            
+
+            controlButton(
+                icon: backwardConfig.icon,
+                size: 18,
+                pressEffect: backwardConfig.press,
+                symbolEffect: backwardConfig.symbol,
+                action: backwardConfig.action
+            )
+
             playPauseButton
-            
-            controlButton(icon: "forward.fill", size: 18) {
-                Task { await musicManager.nextTrack() }
-            }
-            
+
+            controlButton(
+                icon: forwardConfig.icon,
+                size: 18,
+                pressEffect: forwardConfig.press,
+                symbolEffect: forwardConfig.symbol,
+                action: forwardConfig.action
+            )
+
             if Defaults[.showShuffleAndRepeat] {
-                controlButton(icon: repeatIcon, isActive: musicManager.repeatMode != .off) {
-                    Task { await musicManager.toggleRepeat() }
-                }
+                auxButton(for: controls.right)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -193,30 +715,129 @@ struct MinimalisticMusicPlayerView: View {
     
     private var playPauseButton: some View {
         MinimalisticSquircircleButton(
-            icon: musicManager.isPlaying ? "pause.fill" : "play.fill",
-            fontSize: 24,
+            icon: musicManager.isPlaying ? (musicManager.isLiveStream ? "stop.fill" : "pause.fill") : "play.fill",
+            fontSize: 28,
             fontWeight: .semibold,
-            frameSize: CGSize(width: 54, height: 54),
-            cornerRadius: 20,
+            frameSize: CGSize(width: 60, height: 60),
+            cornerRadius: 24,
             foregroundColor: .white,
+            pressEffect: .none,
+            symbolEffectStyle: .replace,
             action: {
-                Task { await musicManager.togglePlay() }
+                musicManager.togglePlay()
             }
         )
     }
     
-    private func controlButton(icon: String, size: CGFloat = 18, isActive: Bool = false, action: @escaping () -> Void) -> some View {
+    private func controlButton(
+        icon: String,
+        size: CGFloat = 18,
+        isActive: Bool = false,
+        activeColor: Color = .red,
+        pressEffect: MinimalisticSquircircleButton.PressEffect = .none,
+        symbolEffect: MinimalisticSquircircleButton.SymbolEffectStyle = .none,
+        action: @escaping () -> Void
+    ) -> some View {
         MinimalisticSquircircleButton(
             icon: icon,
             fontSize: size,
             fontWeight: .medium,
             frameSize: CGSize(width: 40, height: 40),
             cornerRadius: 16,
-            foregroundColor: isActive ? .red : .white.opacity(0.85),
+            foregroundColor: isActive ? activeColor : .white.opacity(0.85),
+            pressEffect: pressEffect,
+            symbolEffectStyle: symbolEffect,
             action: action
         )
     }
-    
+
+    @ViewBuilder
+    private func auxButton(for control: MusicAuxiliaryControl) -> some View {
+        switch control {
+        case .shuffle:
+            controlButton(icon: "shuffle", isActive: musicManager.isShuffled) {
+                Task { await musicManager.toggleShuffle() }
+            }
+        case .repeatMode:
+            controlButton(icon: repeatIcon, isActive: musicManager.repeatMode != .off, symbolEffect: .replace) {
+                Task { await musicManager.toggleRepeat() }
+            }
+        case .mediaOutput:
+            MinimalisticMediaOutputButton()
+        case .lyrics:
+            controlButton(
+                icon: enableLyrics ? "quote.bubble.fill" : "quote.bubble",
+                isActive: enableLyrics,
+                activeColor: Color(nsColor: musicManager.avgColor),
+                symbolEffect: .replace
+            ) {
+                enableLyrics.toggle()
+            }
+        }
+    }
+
+    private var resolvedAuxControls: (left: MusicAuxiliaryControl, right: MusicAuxiliaryControl) {
+        guard leftAuxControl == rightAuxControl else {
+            return (leftAuxControl, rightAuxControl)
+        }
+        return (leftAuxControl, MusicAuxiliaryControl.alternative(excluding: leftAuxControl))
+    }
+    private struct MinimalisticMediaOutputButton: View {
+        @ObservedObject private var routeManager = AudioRouteManager.shared
+        @StateObject private var volumeModel = MediaOutputVolumeViewModel()
+        @EnvironmentObject private var vm: DynamicIslandViewModel
+        @State private var isPopoverPresented = false
+        @State private var isHoveringPopover = false
+
+        var body: some View {
+            MinimalisticSquircircleButton(
+                icon: routeManager.activeDevice?.iconName ?? "speaker.wave.2",
+                fontSize: 18,
+                fontWeight: .medium,
+                frameSize: CGSize(width: 40, height: 40),
+                cornerRadius: 16,
+                foregroundColor: .white.opacity(0.85),
+                symbolEffectStyle: .replace
+            ) {
+                isPopoverPresented.toggle()
+                if isPopoverPresented {
+                    routeManager.refreshDevices()
+                }
+            }
+            .accessibilityLabel("Media output")
+            .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
+                MediaOutputSelectorPopover(
+                    routeManager: routeManager,
+                    volumeModel: volumeModel,
+                    onHoverChanged: { hovering in
+                        isHoveringPopover = hovering
+                        updateActivity()
+                    }
+                ) {
+                    isPopoverPresented = false
+                    isHoveringPopover = false
+                    updateActivity()
+                }
+            }
+            .onChange(of: isPopoverPresented) { _, presented in
+                if !presented {
+                    isHoveringPopover = false
+                }
+                updateActivity()
+            }
+            .onAppear {
+                routeManager.refreshDevices()
+            }
+            .onDisappear {
+                vm.isMediaOutputPopoverActive = false
+            }
+        }
+
+        private func updateActivity() {
+            vm.isMediaOutputPopoverActive = isPopoverPresented && isHoveringPopover
+        }
+    }
+
     private var repeatIcon: String {
         switch musicManager.repeatMode {
         case .off: return "repeat"
@@ -289,15 +910,43 @@ private struct MinimalisticSquircircleButton: View {
     let frameSize: CGSize
     let cornerRadius: CGFloat
     let foregroundColor: Color
+    let pressEffect: PressEffect
+    let symbolEffectStyle: SymbolEffectStyle
     let action: () -> Void
 
     @State private var isHovering = false
+    @State private var pressOffset: CGFloat = 0
+    @State private var rotationAngle: Double = 0
+    @State private var wiggleToken: Int = 0
+
+    init(
+        icon: String,
+        fontSize: CGFloat,
+        fontWeight: Font.Weight,
+        frameSize: CGSize,
+        cornerRadius: CGFloat,
+        foregroundColor: Color,
+        pressEffect: PressEffect = .none,
+        symbolEffectStyle: SymbolEffectStyle = .none,
+        action: @escaping () -> Void
+    ) {
+        self.icon = icon
+        self.fontSize = fontSize
+        self.fontWeight = fontWeight
+        self.frameSize = frameSize
+        self.cornerRadius = cornerRadius
+        self.foregroundColor = foregroundColor
+        self.pressEffect = pressEffect
+        self.symbolEffectStyle = symbolEffectStyle
+        self.action = action
+    }
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: fontSize, weight: fontWeight))
-                .foregroundColor(foregroundColor)
+        Button {
+            triggerPressEffect()
+            action()
+        } label: {
+            iconView()
                 .frame(width: frameSize.width, height: frameSize.height)
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -306,10 +955,104 @@ private struct MinimalisticSquircircleButton: View {
                 .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
         .buttonStyle(PlainButtonStyle())
+        .offset(x: pressOffset)
+        .rotationEffect(.degrees(rotationAngle))
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.18)) {
                 isHovering = hovering
             }
         }
+    }
+
+    private func triggerPressEffect() {
+        switch pressEffect {
+        case .none:
+            return
+        case .nudge(let amount):
+            withAnimation(.spring(response: 0.16, dampingFraction: 0.72)) {
+                pressOffset = amount
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
+                    pressOffset = 0
+                }
+            }
+        case .wiggle(let direction):
+            guard #available(macOS 14.0, *) else { return }
+            wiggleToken += 1
+            let angle: Double = direction == .clockwise ? 11 : -11
+
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.52)) {
+                rotationAngle = angle
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
+                    rotationAngle = 0
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func iconView() -> some View {
+        let image = Image(systemName: icon)
+            .font(.system(size: fontSize, weight: fontWeight))
+            .foregroundColor(foregroundColor)
+
+        switch symbolEffectStyle {
+        case .none:
+            image
+        case .replace:
+            if #available(macOS 14.0, *) {
+                image.contentTransition(.symbolEffect(.replace))
+            } else {
+                image
+            }
+        case .bounce:
+            if #available(macOS 14.0, *) {
+                image.symbolEffect(.bounce, value: icon)
+            } else {
+                image
+            }
+        case .replaceAndBounce:
+            if #available(macOS 14.0, *) {
+                image
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.bounce, value: icon)
+            } else {
+                image
+            }
+        case .wiggle:
+            if #available(macOS 14.0, *) {
+                image.symbolEffect(
+                    .wiggle.byLayer,
+                    options: .nonRepeating,
+                    value: wiggleToken
+                )
+            } else {
+                image
+            }
+        }
+    }
+
+    enum PressEffect {
+        case none
+        case nudge(CGFloat)
+        case wiggle(WiggleDirection)
+    }
+
+    enum SymbolEffectStyle {
+        case none
+        case replace
+        case bounce
+        case replaceAndBounce
+        case wiggle
+    }
+
+    enum WiggleDirection {
+        case clockwise
+        case counterClockwise
     }
 }

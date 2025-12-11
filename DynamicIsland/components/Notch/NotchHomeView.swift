@@ -18,10 +18,14 @@ struct MusicPlayerView: View {
     let showShuffleAndRepeat: Bool
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).padding(.all, 5)
-            MusicControlsView(showShuffleAndRepeat: showShuffleAndRepeat).drawingGroup().compositingGroup()
+            MusicControlsView(showShuffleAndRepeat: showShuffleAndRepeat)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .drawingGroup()
+                .compositingGroup()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -116,6 +120,10 @@ struct MusicControlsView: View {
     @State private var dragging: Bool = false
     @State private var lastDragged: Date = .distantPast
     let showShuffleAndRepeat: Bool
+    @Default(.musicAuxLeftControl) private var leftAuxControl
+    @Default(.musicAuxRightControl) private var rightAuxControl
+    @Default(.musicSkipBehavior) private var musicSkipBehavior
+    @Default(.enableLyrics) private var enableLyrics
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -123,6 +131,7 @@ struct MusicControlsView: View {
             playbackControls
         }
         .buttonStyle(PlainButtonStyle())
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var songInfoAndSlider: some View {
@@ -134,6 +143,7 @@ struct MusicControlsView: View {
         }
         .padding(.top, 10)
         .padding(.leading, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func songInfo(width: CGFloat) -> some View {
@@ -148,6 +158,35 @@ struct MusicControlsView: View {
                 frameWidth: width
             )
             .fontWeight(.medium)
+            // Lyrics shown under the author name (same font size as author) when enabled in settings
+            if enableLyrics {
+                let transition = AnyTransition.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .move(edge: .top).combined(with: .opacity)
+                )
+
+                let line = musicManager.currentLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if !line.isEmpty {
+                    let lyricsBinding = Binding<String>(
+                        get: { musicManager.currentLyrics },
+                        set: { _ in }
+                    )
+
+                    MarqueeText(
+                        lyricsBinding,
+                        font: .headline,
+                        nsFont: .headline,
+                        textColor: .white.opacity(0.8),
+                        minDuration: 0.35,
+                        frameWidth: width
+                    )
+                    .padding(.top, 2)
+                    .id(line)
+                    .transition(transition)
+                    .animation(.easeInOut(duration: 0.32), value: line)
+                }
+            }
         }
     }
 
@@ -163,8 +202,10 @@ struct MusicControlsView: View {
                 timestampDate: musicManager.timestampDate,
                 elapsedTime: musicManager.elapsedTime,
                 playbackRate: musicManager.playbackRate,
-                isPlaying: musicManager.isPlaying
+                isPlaying: musicManager.isPlaying,
+                isLiveStream: musicManager.isLiveStream
             ) { newValue in
+                guard !musicManager.isLiveStream else { return }
                 MusicManager.shared.seek(to: newValue)
             }
             .padding(.top, 5)
@@ -173,28 +214,65 @@ struct MusicControlsView: View {
     }
 
     private var playbackControls: some View {
-        HStack(spacing: 8) {
+        let controls = resolvedAuxControls
+        let seekInterval: TimeInterval = 10
+        let skipMagnitude: CGFloat = 6
+
+        let backwardConfig: (icon: String, press: HoverButton.PressEffect?, action: () -> Void)
+        let forwardConfig: (icon: String, press: HoverButton.PressEffect?, action: () -> Void)
+
+        switch musicSkipBehavior {
+        case .track:
+            backwardConfig = (
+                icon: "backward.fill",
+                press: .nudge(-skipMagnitude),
+                action: { musicManager.previousTrack() }
+            )
+            forwardConfig = (
+                icon: "forward.fill",
+                press: .nudge(skipMagnitude),
+                action: { musicManager.nextTrack() }
+            )
+        case .tenSecond:
+            backwardConfig = (
+                icon: "gobackward.10",
+                press: .wiggle(.counterClockwise),
+                action: { musicManager.seek(by: -seekInterval) }
+            )
+            forwardConfig = (
+                icon: "goforward.10",
+                press: .wiggle(.clockwise),
+                action: { musicManager.seek(by: seekInterval) }
+            )
+        }
+
+        return HStack(spacing: 8) {
             if showShuffleAndRepeat {
-                HoverButton(
-                    icon: "shuffle", iconColor: musicManager.isShuffled ? .red : .white,
-                    scale: .medium
-                ) {
-                    MusicManager.shared.toggleShuffle()
-                }
+                auxButton(for: controls.left)
             }
-            HoverButton(icon: "backward.fill", scale: .medium) {
-                MusicManager.shared.previousTrack()
+
+            HoverButton(
+                icon: backwardConfig.icon,
+                scale: .medium,
+                pressEffect: backwardConfig.press
+            ) {
+                backwardConfig.action()
             }
-            HoverButton(icon: musicManager.isPlaying ? "pause.fill" : "play.fill", scale: .large) {
+
+            HoverButton(icon: musicManager.isPlaying ? (musicManager.isLiveStream ? "stop.fill" : "pause.fill") : "play.fill", scale: .large) {
                 MusicManager.shared.togglePlay()
             }
-            HoverButton(icon: "forward.fill", scale: .medium) {
-                MusicManager.shared.nextTrack()
+
+            HoverButton(
+                icon: forwardConfig.icon,
+                scale: .medium,
+                pressEffect: forwardConfig.press
+            ) {
+                forwardConfig.action()
             }
+
             if showShuffleAndRepeat {
-                HoverButton(icon: repeatIcon, iconColor: repeatIconColor, scale: .medium) {
-                    MusicManager.shared.toggleRepeat()
-                }
+                auxButton(for: controls.right)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -217,6 +295,45 @@ struct MusicControlsView: View {
             return .white
         case .all, .one:
             return .red
+        }
+    }
+
+    private var resolvedAuxControls: (left: MusicAuxiliaryControl, right: MusicAuxiliaryControl) {
+        guard leftAuxControl == rightAuxControl else {
+            return (leftAuxControl, rightAuxControl)
+        }
+        return (leftAuxControl, MusicAuxiliaryControl.alternative(excluding: leftAuxControl))
+    }
+
+    @ViewBuilder
+    private func auxButton(for control: MusicAuxiliaryControl) -> some View {
+        switch control {
+        case .shuffle:
+            HoverButton(
+                icon: "shuffle",
+                iconColor: musicManager.isShuffled ? .red : .white,
+                scale: .medium
+            ) {
+                MusicManager.shared.toggleShuffle()
+            }
+        case .repeatMode:
+            HoverButton(
+                icon: repeatIcon,
+                iconColor: repeatIconColor,
+                scale: .medium
+            ) {
+                MusicManager.shared.toggleRepeat()
+            }
+        case .mediaOutput:
+            MediaOutputPickerButton()
+        case .lyrics:
+            HoverButton(
+                icon: enableLyrics ? "quote.bubble.fill" : "quote.bubble",
+                iconColor: enableLyrics ? Color(nsColor: MusicManager.shared.avgColor) : .white,
+                scale: .medium
+            ) {
+                enableLyrics.toggle()
+            }
         }
     }
 }
@@ -247,6 +364,7 @@ struct NotchHomeView: View {
             } else {
                 // Normal mode: Show full music player with optional calendar and webcam
                 MusicPlayerView(albumArtNamespace: albumArtNamespace, showShuffleAndRepeat: Defaults[.showShuffleAndRepeat])
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 
                 if Defaults[.showCalendar] {
                     CalendarView()
@@ -284,36 +402,148 @@ struct MusicSliderView: View {
     let elapsedTime: Double
     let playbackRate: Double
     let isPlaying: Bool
+    let isLiveStream: Bool
     var onValueChange: (Double) -> Void
+    var labelLayout: TimeLabelLayout = .stacked
+    var trailingLabel: TrailingLabel = .duration
+    var restingTrackHeight: CGFloat = 5
+    var draggingTrackHeight: CGFloat = 9
 
+    enum TimeLabelLayout {
+        case stacked
+        case inline
+    }
+
+    enum TrailingLabel {
+        case duration
+        case remaining
+    }
 
     var body: some View {
-        VStack {
-            CustomSlider(
-                value: $sliderValue,
-                range: 0 ... duration,
-                color: Defaults[.sliderColor] == SliderColorEnum.albumArt ? Color(
-                    nsColor: color
-                ).ensureMinimumBrightness(factor: 0.8) : Defaults[.sliderColor] == SliderColorEnum.accent ? .accentColor : .white,
-                dragging: $dragging,
-                lastDragged: $lastDragged,
-                onValueChange: onValueChange
-            )
-            .frame(height: 10, alignment: .center)
-            HStack {
-                Text(timeString(from: sliderValue))
-                Spacer()
-                Text(timeString(from: duration))
+        Group {
+            if isLiveStream {
+                liveStreamView
+            } else {
+                switch labelLayout {
+                case .stacked:
+                    stackedContent
+                case .inline:
+                    inlineContent
+                }
             }
-            .fontWeight(.medium)
-            .foregroundColor(Defaults[.playerColorTinting] ? Color(nsColor: color)
-                .ensureMinimumBrightness(factor: 0.6) : .gray)
-            .font(.caption)
         }
         .onChange(of: currentDate) { newDate in
+            guard !isLiveStream else { return }
             guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
             sliderValue = MusicManager.shared.estimatedPlaybackPosition(at: newDate)
         }
+        .onChange(of: isLiveStream) { isLive in
+            if isLive {
+                sliderValue = 0
+            }
+        }
+    }
+
+    private var stackedContent: some View {
+        VStack(spacing: 6) {
+            sliderCore
+                .frame(height: sliderFrameHeight)
+
+            HStack {
+                Text(timeString(from: sliderValue))
+                Spacer()
+                Text(trailingTimeText)
+            }
+            .fontWeight(.medium)
+            .foregroundColor(timeLabelColor)
+            .font(.caption)
+        }
+    }
+
+    private var inlineContent: some View {
+        HStack(spacing: 10) {
+            Text(timeString(from: sliderValue))
+                .font(inlineLabelFont)
+                .foregroundColor(timeLabelColor)
+                .frame(width: 42, alignment: .leading)
+
+            sliderCore
+                .frame(height: sliderFrameHeight)
+                .frame(maxWidth: .infinity)
+
+            Text(trailingTimeText)
+                .font(inlineLabelFont)
+                .foregroundColor(timeLabelColor)
+                .frame(width: 48, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private var liveStreamView: some View {
+        switch labelLayout {
+        case .stacked:
+            LiveStreamProgressIndicator(tint: sliderTint)
+                .frame(maxWidth: .infinity)
+                .frame(height: sliderFrameHeight)
+        case .inline:
+            HStack(spacing: 10) {
+                Spacer()
+                    .frame(width: 42)
+                LiveStreamProgressIndicator(tint: sliderTint)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: sliderFrameHeight)
+                Spacer()
+                    .frame(width: 48)
+            }
+        }
+    }
+
+    private var sliderCore: some View {
+        CustomSlider(
+            value: $sliderValue,
+            range: 0 ... duration,
+            color: sliderTint,
+            dragging: $dragging,
+            lastDragged: $lastDragged,
+            onValueChange: onValueChange,
+            restingTrackHeight: restingTrackHeight,
+            draggingTrackHeight: draggingTrackHeight
+        )
+    }
+
+    private var sliderTint: Color {
+        switch Defaults[.sliderColor] {
+        case .albumArt:
+            return Color(nsColor: color).ensureMinimumBrightness(factor: 0.8)
+        case .accent:
+            return .accentColor
+        case .white:
+            return .white
+        }
+    }
+
+    private var timeLabelColor: Color {
+        Defaults[.playerColorTinting]
+            ? Color(nsColor: color).ensureMinimumBrightness(factor: 0.6)
+            : .gray
+    }
+
+    private var trailingTimeText: String {
+        switch trailingLabel {
+        case .duration:
+            return timeString(from: duration)
+        case .remaining:
+            let remaining = max(duration - sliderValue, 0)
+            return "-" + timeString(from: remaining)
+        }
+    }
+
+    private var inlineLabelFont: Font {
+        .system(size: 11, weight: .medium, design: .monospaced)
+    }
+
+    private var sliderFrameHeight: CGFloat {
+        max(restingTrackHeight, draggingTrackHeight)
     }
 
     func timeString(from seconds: Double) -> String {
@@ -328,7 +558,9 @@ struct MusicSliderView: View {
             return String(format: "%d:%02d", minutes, remainingSeconds)
         }
     }
+
 }
+
 
 struct CustomSlider: View {
     @Binding var value: Double
@@ -338,11 +570,13 @@ struct CustomSlider: View {
     @Binding var lastDragged: Date
     var onValueChange: ((Double) -> Void)?
     var thumbSize: CGFloat = 12
+    var restingTrackHeight: CGFloat = 5
+    var draggingTrackHeight: CGFloat = 9
 
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let height = CGFloat(dragging ? 9 : 5)
+            let trackHeight = CGFloat(dragging ? draggingTrackHeight : restingTrackHeight)
             let rangeSpan = range.upperBound - range.lowerBound
 
             let progress = rangeSpan == .zero ? 0 : (value - range.lowerBound) / rangeSpan
@@ -352,15 +586,15 @@ struct CustomSlider: View {
                 // Background track
                 Rectangle()
                     .fill(.gray.opacity(0.3))
-                    .frame(height: height)
+                    .frame(height: trackHeight)
 
                 // Filled track
                 Rectangle()
                     .fill(color)
-                    .frame(width: filledTrackWidth, height: height)
+                    .frame(width: filledTrackWidth, height: trackHeight)
             }
-            .cornerRadius(height / 2)
-            .frame(height: 10)
+            .cornerRadius(trackHeight / 2)
+            .frame(height: max(restingTrackHeight, draggingTrackHeight))
             .contentShape(Rectangle())
             .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
@@ -379,6 +613,239 @@ struct CustomSlider: View {
             )
             .animation(.bouncy.speed(1.4), value: dragging)
         }
+    }
+}
+
+private struct MediaOutputPickerButton: View {
+    @ObservedObject private var routeManager = AudioRouteManager.shared
+    @StateObject private var volumeModel = MediaOutputVolumeViewModel()
+    @State private var isPopoverPresented = false
+    @State private var isHoveringPopover = false
+    @EnvironmentObject private var vm: DynamicIslandViewModel
+
+    var body: some View {
+        HoverButton(icon: buttonIcon, iconColor: .white, scale: .medium) {
+            isPopoverPresented.toggle()
+            if isPopoverPresented {
+                routeManager.refreshDevices()
+            }
+        }
+        .accessibilityLabel("Media output")
+        .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
+            MediaOutputSelectorPopover(
+                routeManager: routeManager,
+                volumeModel: volumeModel,
+                onHoverChanged: { hovering in
+                    isHoveringPopover = hovering
+                    updatePopoverActivity()
+                }
+            ) {
+                isPopoverPresented = false
+                isHoveringPopover = false
+                updatePopoverActivity()
+            }
+        }
+        .onAppear {
+            routeManager.refreshDevices()
+        }
+        .onChange(of: isPopoverPresented) { _, presented in
+            if !presented {
+                isHoveringPopover = false
+            }
+            updatePopoverActivity()
+        }
+        .onDisappear {
+            vm.isMediaOutputPopoverActive = false
+        }
+    }
+
+    private var buttonIcon: String {
+        routeManager.activeDevice?.iconName ?? "speaker.wave.2"
+    }
+
+    private func updatePopoverActivity() {
+        vm.isMediaOutputPopoverActive = isPopoverPresented && isHoveringPopover
+    }
+}
+
+struct MediaOutputSelectorPopover: View {
+    @ObservedObject var routeManager: AudioRouteManager
+    @ObservedObject var volumeModel: MediaOutputVolumeViewModel
+    var onHoverChanged: (Bool) -> Void
+    var dismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            volumeSection
+            Divider()
+            devicesSection
+        }
+        .frame(width: 240)
+        .padding(16)
+        .onHover { hovering in
+            onHoverChanged(hovering)
+        }
+        .onDisappear {
+            onHoverChanged(false)
+        }
+    }
+
+    private var volumeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    volumeModel.toggleMute()
+                } label: {
+                    Image(systemName: volumeIconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            Circle()
+                                .fill(Color.secondary.opacity(0.18))
+                        )
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+
+                Slider(
+                    value: Binding(
+                        get: { Double(volumeModel.level) },
+                        set: { newValue in
+                            volumeModel.setVolume(Float(newValue))
+                        }
+                    ),
+                    in: 0 ... 1
+                )
+                .tint(.accentColor)
+            }
+
+            HStack {
+                Text("Output volume")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(volumePercentage)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private var devicesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Output devices")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if routeManager.devices.isEmpty {
+                Text("No audio outputs available")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(routeManager.devices) { device in
+                            Button {
+                                routeManager.select(device: device)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: device.iconName)
+                                        .font(.system(size: 14, weight: .medium))
+                                    Text(device.name)
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    if device.id == routeManager.activeDeviceID {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 12, weight: .bold))
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(device.id == routeManager.activeDeviceID ? Color.primary.opacity(0.12) : .clear)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 180)
+            }
+        }
+    }
+
+    private var volumeIconName: String {
+        if volumeModel.isMuted || volumeModel.level <= 0.001 {
+            return "speaker.slash.fill"
+        } else if volumeModel.level < 0.33 {
+            return "speaker.wave.1.fill"
+        } else if volumeModel.level < 0.66 {
+            return "speaker.wave.2.fill"
+        }
+        return "speaker.wave.3.fill"
+    }
+
+    private var volumePercentage: String {
+        "\(Int(round(volumeModel.level * 100)))%"
+    }
+}
+
+final class MediaOutputVolumeViewModel: ObservableObject {
+    @Published var level: Float
+    @Published var isMuted: Bool
+
+    private let controller: SystemVolumeController
+    private var cancellables: Set<AnyCancellable> = []
+
+    init(controller: SystemVolumeController = .shared) {
+        self.controller = controller
+        controller.start()
+        level = controller.currentVolume
+        isMuted = controller.isMuted
+
+        NotificationCenter.default.publisher(for: .systemVolumeDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notification in
+                guard let self,
+                      let value = notification.userInfo?["value"] as? Float,
+                      let muted = notification.userInfo?["muted"] as? Bool else { return }
+                self.level = value
+                self.isMuted = muted
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .systemAudioRouteDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.syncFromController()
+            }
+            .store(in: &cancellables)
+    }
+
+    func setVolume(_ value: Float) {
+        level = value
+        if value > 0 {
+            isMuted = false
+        }
+        controller.setVolume(value)
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        controller.toggleMute()
+    }
+
+    private func syncFromController() {
+        level = controller.currentVolume
+        isMuted = controller.isMuted
     }
 }
 

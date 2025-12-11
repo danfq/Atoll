@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import SkyLightWindow
+import Defaults
+import QuartzCore
 
 @MainActor
 final class LockScreenWeatherPanelManager {
@@ -8,8 +10,15 @@ final class LockScreenWeatherPanelManager {
 
     private var window: NSWindow?
     private var hasDelegated = false
+    private(set) var latestFrame: NSRect?
+    private var lastSnapshot: LockScreenWeatherSnapshot?
+    private var lastContentSize: CGSize?
+    private var screenChangeObserver: NSObjectProtocol?
+    private var workspaceObservers: [NSObjectProtocol] = []
 
-    private init() {}
+    private init() {
+        registerScreenChangeObservers()
+    }
 
     func show(with snapshot: LockScreenWeatherSnapshot) {
         render(snapshot: snapshot, makeVisible: true)
@@ -23,6 +32,9 @@ final class LockScreenWeatherPanelManager {
         guard let window else { return }
         window.orderOut(nil)
         window.contentView = nil
+        latestFrame = nil
+        lastSnapshot = nil
+        lastContentSize = nil
     }
 
     private func render(snapshot: LockScreenWeatherSnapshot, makeVisible: Bool) {
@@ -36,10 +48,13 @@ final class LockScreenWeatherPanelManager {
         let fittingSize = hostingView.fittingSize
         hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
-        let targetFrame = frame(for: fittingSize, on: screen)
+        let targetFrame = frame(for: fittingSize, snapshot: snapshot, on: screen)
         let window = ensureWindow()
         window.setFrame(targetFrame, display: true)
+        latestFrame = targetFrame
         window.contentView = hostingView
+        lastSnapshot = snapshot
+        lastContentSize = fittingSize
 
         if makeVisible {
             window.orderFrontRegardless()
@@ -67,6 +82,8 @@ final class LockScreenWeatherPanelManager {
         newWindow.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         newWindow.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
+        ScreenCaptureVisibilityManager.shared.register(newWindow, scope: .entireInterface)
+
         window = newWindow
         if !hasDelegated {
             SkyLightOperator.shared.delegateWindow(newWindow)
@@ -75,12 +92,65 @@ final class LockScreenWeatherPanelManager {
         return newWindow
     }
 
-    private func frame(for size: CGSize, on screen: NSScreen) -> NSRect {
+    private func frame(for size: CGSize, snapshot: LockScreenWeatherSnapshot, on screen: NSScreen) -> NSRect {
         let screenFrame = screen.frame
         let originX = screenFrame.midX - (size.width / 2)
         let verticalOffset = screenFrame.height * 0.15
         let maxY = screenFrame.maxY - size.height - 48
-        let originY = min(maxY, screenFrame.midY + verticalOffset)
-        return NSRect(x: originX, y: originY, width: size.width, height: size.height)
+        let baseY = min(maxY, screenFrame.midY + verticalOffset)
+        let loweredY = baseY - 36
+
+        let inlineLift: CGFloat = snapshot.widgetStyle == .inline ? 44 : 0
+        let userOffset = CGFloat(Defaults[.lockScreenWeatherVerticalOffset])
+        let clampedOffset = min(max(userOffset, -160), 160)
+        let adjustedY = loweredY + inlineLift + clampedOffset
+        let upperClampedY = min(maxY, adjustedY)
+        let clampedY = max(screenFrame.minY + 80, upperClampedY)
+        return NSRect(x: originX, y: clampedY, width: size.width, height: size.height)
+    }
+
+    func refreshPositionForOffsets(animated: Bool = true) {
+        guard let window, let snapshot = lastSnapshot else { return }
+        guard let screen = NSScreen.main else { return }
+        let size = lastContentSize ?? window.frame.size
+        let targetFrame = frame(for: size, snapshot: snapshot, on: screen)
+        latestFrame = targetFrame
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.animator().setFrame(targetFrame, display: true)
+            }
+        } else {
+            window.setFrame(targetFrame, display: true)
+        }
+    }
+
+    private func registerScreenChangeObservers() {
+        screenChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleScreenGeometryChange(reason: "screen-parameters")
+        }
+
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        let wakeObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleScreenGeometryChange(reason: "screens-did-wake")
+        }
+
+        workspaceObservers = [wakeObserver]
+    }
+
+    private func handleScreenGeometryChange(reason: String) {
+        guard window?.isVisible == true else { return }
+        refreshPositionForOffsets(animated: false)
+        print("LockScreenWeatherPanelManager: realigned window due to \(reason)")
     }
 }

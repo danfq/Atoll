@@ -20,6 +20,7 @@ struct TabSelectionView: View {
     @Default(.enableTimerFeature) var enableTimerFeature
     @Default(.enableStatsFeature) var enableStatsFeature
     @Default(.enableColorPickerFeature) var enableColorPickerFeature
+    @Default(.timerDisplayMode) var timerDisplayMode
     @Namespace var animation
 
     private var tabs: [TabModel] {

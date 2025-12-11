@@ -11,6 +11,12 @@ import Combine
 import AppKit
 import Defaults
 import SwiftUI
+import AVFoundation
+
+enum LockScreenAnimationTimings {
+    static let lockExpand: TimeInterval = 0.45
+    static let unlockCollapse: TimeInterval = 0.82
+}
 
 @MainActor
 class LockScreenManager: ObservableObject {
@@ -74,7 +80,13 @@ class LockScreenManager: ObservableObject {
     // MARK: - Event Handlers
     
     @objc private func screenLocked() {
+        guard !isLocked else {
+            print("[\(timestamp())] LockScreenManager: 🔁 Duplicate LOCK event ignored")
+            return
+        }
         print("[\(timestamp())] LockScreenManager: 🔒 Screen LOCKED event received")
+        Logger.log("LockScreenManager: Screen locked", category: .lifecycle)
+        LockSoundPlayer.shared.playLockChime()
         
         // Update state SYNCHRONOUSLY without Task/await to avoid any delay
         lastUpdated = Date()
@@ -100,8 +112,10 @@ class LockScreenManager: ObservableObject {
         LockScreenPanelManager.shared.showPanel()
         LockScreenLiveActivityWindowManager.shared.showLocked()
         LockScreenWeatherManager.shared.showWeatherWidget()
+        LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: true)
+        TimerControlWindowManager.shared.hide(animated: false)
         
-        // THEN trigger lock icon in Dynamic Island (only if enabled in settings)
+        // THEN trigger lock icon in Atoll (only if enabled in settings)
         if Defaults[.enableLockScreenLiveActivity] {
             print("[\(timestamp())] LockScreenManager: 🔴 Starting lock icon live activity")
             coordinator.toggleExpandingView(status: true, type: .lockScreen)
@@ -113,29 +127,35 @@ class LockScreenManager: ObservableObject {
     }
     
     @objc private func screenUnlocked() {
+        guard isLocked else {
+            print("[\(timestamp())] LockScreenManager: 🔁 Unlock event ignored (already unlocked)")
+            return
+        }
         print("[\(timestamp())] LockScreenManager: 🔓 Screen UNLOCKED event received")
+        Logger.log("LockScreenManager: Screen unlocked", category: .lifecycle)
+        LockSoundPlayer.shared.playUnlockChime()
+        lastUpdated = Date()
+        updateIdleState(locked: false)
+        isLocked = false
         
         // Hide panel window immediately and synchronously
         print("[\(timestamp())] LockScreenManager: 🚪 Hiding panel window")
         LockScreenPanelManager.shared.hidePanel()
         LockScreenLiveActivityWindowManager.shared.showUnlockAndScheduleHide()
         LockScreenWeatherManager.shared.hideWeatherWidget()
+        LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: false)
         
         // Update state immediately
         if Defaults[.enableLockScreenLiveActivity] {
             collapseTask?.cancel()
             collapseTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(380))
+                try? await Task.sleep(for: .seconds(LockScreenAnimationTimings.unlockCollapse))
                 guard let self = self, !Task.isCancelled else { return }
                 await MainActor.run {
                     self.coordinator.toggleExpandingView(status: false, type: .lockScreen)
                 }
             }
         }
-        
-        self.lastUpdated = Date()
-        self.updateIdleState(locked: false)
-        self.isLocked = false
         
         print("[\(self.timestamp())] LockScreenManager: ✅ Lock screen deactivated")
     }
@@ -150,11 +170,13 @@ class LockScreenManager: ObservableObject {
         } else {
             debounceIdleTask?.cancel()
             debounceIdleTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(Defaults[.waitInterval]))
+                let configuredInterval = max(Defaults[.waitInterval], 0)
+                let idleDelay = min(max(configuredInterval, 0.2), LockScreenAnimationTimings.unlockCollapse)
+                try? await Task.sleep(for: .seconds(idleDelay))
                 guard let self = self, !Task.isCancelled else { return }
                 await MainActor.run {
-                    if self.lastUpdated.timeIntervalSinceNow < -Defaults[.waitInterval] {
-                        withAnimation {
+                    if self.lastUpdated.timeIntervalSinceNow < -idleDelay {
+                        withAnimation(.smooth(duration: 0.3)) {
                             self.isLockIdle = !self.isLocked
                         }
                     }
@@ -179,5 +201,68 @@ extension LockScreenManager {
     /// Check if monitoring is available (for settings UI)
     var isMonitoringAvailable: Bool {
         return true // Always available on macOS
+    }
+}
+
+// MARK: - Lock Sound Playback
+
+@MainActor
+final class LockSoundPlayer {
+    static let shared = LockSoundPlayer()
+    private let throttleInterval: TimeInterval = 0.25
+    private var players: [SoundType: AVAudioPlayer] = [:]
+    private var lastPlaybackDates: [SoundType: Date] = [:]
+
+    private init() {}
+
+    func playLockChime() {
+        play(.lock)
+    }
+
+    func playUnlockChime() {
+        play(.unlock)
+    }
+
+    private func play(_ type: SoundType) {
+        guard Defaults[.enableLockSounds] else { return }
+        guard shouldPlay(type) else { return }
+        guard let player = resolvePlayer(for: type) else { return }
+
+        player.currentTime = 0
+        player.play()
+        lastPlaybackDates[type] = Date()
+    }
+
+    private func shouldPlay(_ type: SoundType) -> Bool {
+        guard let last = lastPlaybackDates[type] else { return true }
+        return Date().timeIntervalSince(last) >= throttleInterval
+    }
+
+    private func resolvePlayer(for type: SoundType) -> AVAudioPlayer? {
+        if let cached = players[type] {
+            return cached
+        }
+
+        guard let url = Bundle.main.url(forResource: type.resourceName, withExtension: "mp3") else {
+            Logger.log("Missing \(type.resourceName).mp3 in bundle", category: .warning)
+            return nil
+        }
+
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.prepareToPlay()
+            players[type] = player
+            return player
+        } catch {
+            Logger.log("Failed to initialize lock sound player for \(type.resourceName): \(error.localizedDescription)", category: .error)
+            return nil
+        }
+    }
+
+    private enum SoundType: String {
+        case lock
+        case unlock
+
+        var resourceName: String { rawValue }
     }
 }

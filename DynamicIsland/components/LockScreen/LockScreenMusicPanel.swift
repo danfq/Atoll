@@ -13,15 +13,30 @@ struct LockScreenMusicPanel: View {
     static let expandedSize = CGSize(width: 720, height: 340)
 
     @ObservedObject var musicManager = MusicManager.shared
+    @ObservedObject private var routeManager = AudioRouteManager.shared
+    @StateObject private var volumeModel = MediaOutputVolumeViewModel()
+    @ObservedObject private var animator: LockScreenPanelAnimator
     @State private var sliderValue: Double = 0
     @State private var dragging: Bool = false
+    @State private var lastDragged: Date = .distantPast
     @State private var isActive = true
     @State private var isExpanded = false
+    @State private var isVolumeSliderVisible = false
     @State private var collapseWorkItem: DispatchWorkItem?
     @Default(.lockScreenGlassStyle) var lockScreenGlassStyle
     @Default(.lockScreenShowAppIcon) var showAppIcon
     @Default(.lockScreenPanelShowsBorder) var showPanelBorder
     @Default(.lockScreenPanelUsesBlur) var enableBlur
+    @Default(.showMediaOutputControl) var showMediaOutputControl
+    @Default(.showShuffleAndRepeat) var showShuffleAndRepeat
+    @Default(.musicAuxLeftControl) private var leftAuxControl
+    @Default(.musicAuxRightControl) private var rightAuxControl
+    @Default(.musicSkipBehavior) private var musicSkipBehavior
+    @Default(.enableLyrics) private var enableLyrics
+
+    init(animator: LockScreenPanelAnimator) {
+        _animator = ObservedObject(wrappedValue: animator)
+    }
     
     private let collapsedPanelCornerRadius: CGFloat = 28
     private let expandedPanelCornerRadius: CGFloat = 52
@@ -29,9 +44,14 @@ struct LockScreenMusicPanel: View {
     private let expandedAlbumArtCornerRadius: CGFloat = 60
     private let expandedContentSpacing: CGFloat = 40
     private let collapseTimeout: TimeInterval = 5
+    private let collapsedSliderExtraHeight: CGFloat = 72
+    private let expandedSliderExtraHeight: CGFloat = 88
+    private let collapsedLyricsExtraHeight: CGFloat = 64
+    private let expandedLyricsExtraHeight: CGFloat = 96
 
     private var currentSize: CGSize {
-        isExpanded ? Self.expandedSize : Self.collapsedSize
+        let base = isExpanded ? Self.expandedSize : Self.collapsedSize
+        return CGSize(width: base.width, height: base.height + totalExtraHeight)
     }
 
     private var panelCornerRadius: CGFloat {
@@ -58,19 +78,38 @@ struct LockScreenMusicPanel: View {
         panelCore
             .frame(width: currentSize.width, height: currentSize.height)
             .animation(.spring(response: 0.48, dampingFraction: 0.82, blendDuration: 0.18), value: isExpanded)
+            .animation(.spring(response: 0.45, dampingFraction: 0.85, blendDuration: 0.18), value: shouldShowVolumeSlider)
             .onAppear {
                 sliderValue = musicManager.elapsedTime
                 isActive = true
                 logPanelAppearance()
-                LockScreenPanelManager.shared.updatePanelSize(expanded: false, animated: false)
+                updatePanelSize(animated: false)
+                routeManager.refreshDevices()
             }
             .onDisappear {
                 isActive = false
                 cancelCollapseTimer()
+                isVolumeSliderVisible = false
             }
             .onChange(of: isExpanded) { _, expanded in
-                LockScreenPanelManager.shared.updatePanelSize(expanded: expanded)
+                updatePanelSize()
             }
+            .onChange(of: showMediaOutputControl) { _, enabled in
+                if !enabled {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        isVolumeSliderVisible = false
+                    }
+                }
+                updatePanelSize()
+            }
+            .onChange(of: enableLyrics) { _, _ in
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                    updatePanelSize()
+                }
+            }
+            .scaleEffect(animator.isPresented ? 1 : 0.9, anchor: .center)
+            .opacity(animator.isPresented ? 1 : 0)
+            .animation(.spring(response: 0.52, dampingFraction: 0.8), value: animator.isPresented)
     }
 
     @ViewBuilder
@@ -244,72 +283,47 @@ struct LockScreenMusicPanel: View {
     // MARK: - Progress Bar
     
     private var progressBar: some View {
-        TimelineView(.animation(minimumInterval: musicManager.playbackRate > 0 ? 0.1 : nil)) { timeline in
-            let currentElapsed = currentSliderValue(timeline.date)
-            
-            HStack(spacing: 8) {
-                // Elapsed time
-                Text(formatTime(dragging ? sliderValue : currentElapsed))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 42, alignment: .leading)
-                
-                // Progress bar
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // Background track
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white.opacity(0.2))
-                            .frame(height: 6)
-                        
-                        // Filled portion
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(sliderColor)
-                            .frame(width: max(0, geometry.size.width * (currentSliderValue(timeline.date) / max(musicManager.songDuration, 1))), height: 6)
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                registerInteraction()
-                                dragging = true
-                                let newValue = min(max(0, Double(value.location.x / geometry.size.width) * musicManager.songDuration), musicManager.songDuration)
-                                sliderValue = newValue
-                            }
-                            .onEnded { _ in
-                                registerInteraction()
-                                musicManager.seek(to: sliderValue)
-                                dragging = false
-                            }
-                    )
-                }
-                .frame(height: 6)
-                
-                // Time remaining
-                Text("-\(formatTime(musicManager.songDuration - (dragging ? sliderValue : currentElapsed)))")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(width: 48, alignment: .trailing)
-            }
+        TimelineView(
+            .animation(
+                minimumInterval: (!musicManager.isLiveStream && musicManager.playbackRate > 0) ? 0.1 : nil
+            )
+        ) { timeline in
+            MusicSliderView(
+                sliderValue: $sliderValue,
+                duration: Binding(
+                    get: { musicManager.songDuration },
+                    set: { musicManager.songDuration = $0 }
+                ),
+                lastDragged: $lastDragged,
+                color: musicManager.avgColor,
+                dragging: $dragging,
+                currentDate: timeline.date,
+                timestampDate: musicManager.timestampDate,
+                elapsedTime: musicManager.elapsedTime,
+                playbackRate: musicManager.playbackRate,
+                isPlaying: musicManager.isPlaying,
+                isLiveStream: musicManager.isLiveStream,
+                onValueChange: { newValue in
+                    registerInteraction()
+                    musicManager.seek(to: newValue)
+                },
+                labelLayout: .inline,
+                trailingLabel: .remaining,
+                restingTrackHeight: 7,
+                draggingTrackHeight: 11
+            )
         }
         .onAppear {
             sliderValue = musicManager.elapsedTime
         }
-    }
-    
-    private func currentSliderValue(_ date: Date) -> Double {
-        if dragging {
-            return sliderValue
+        .onChange(of: musicManager.isLiveStream) { _, isLive in
+            if isLive {
+                dragging = false
+                sliderValue = 0
+            }
         }
-        
-        if musicManager.isPlaying {
-            let timeSinceLastUpdate = date.timeIntervalSince(musicManager.timestampDate)
-            let estimatedElapsed = musicManager.elapsedTime + (timeSinceLastUpdate * musicManager.playbackRate)
-            return min(estimatedElapsed, musicManager.songDuration)
-        }
-        
-        return musicManager.elapsedTime
     }
-    
+
     private var sliderColor: Color {
         switch Defaults[.sliderColor] {
         case .white:
@@ -321,82 +335,361 @@ struct LockScreenMusicPanel: View {
         }
     }
     
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-    
     // MARK: - Playback Controls
     
     private func playbackControls(alignment: Alignment) -> some View {
         let spacing: CGFloat = isExpanded ? 24 : 20
+        let verticalSpacing: CGFloat = (shouldShowVolumeSlider || enableLyrics) ? 14 : 10
 
-        return HStack(spacing: spacing) {
-            // Always show shuffle on lock screen
-            controlButton(icon: "shuffle", isActive: musicManager.isShuffled) {
-                musicManager.toggleShuffle()
+        return VStack(spacing: verticalSpacing) {
+            controlsRow(alignment: alignment, spacing: spacing)
+
+            if shouldShowVolumeSlider {
+                volumeSlider
+                    .frame(maxWidth: .infinity, alignment: alignment)
+                    .transition(.scale(scale: 0.98, anchor: .top).combined(with: .opacity))
             }
-            
-            controlButton(icon: "backward.fill", size: 18) {
-                musicManager.previousTrack()
-            }
-            
-            playPauseButton
-            
-            controlButton(icon: "forward.fill", size: 18) {
-                musicManager.nextTrack()
-            }
-            
-            // Always show repeat on lock screen
-            controlButton(icon: repeatIcon, isActive: musicManager.repeatMode != .off) {
-                musicManager.toggleRepeat()
+
+            if enableLyrics {
+                lyricsSection(alignment: alignment)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, alignment: alignment)
         .padding(.top, isExpanded ? 6 : 2)
+        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: shouldShowVolumeSlider)
+        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: enableLyrics)
+    }
+
+    private func controlsRow(alignment: Alignment, spacing: CGFloat) -> some View {
+        let controls = resolvedAuxControls
+        let skipNudge: CGFloat = isExpanded ? 14 : 9
+        let seekInterval: TimeInterval = 10
+
+        let backwardConfig: (icon: String, interaction: PanelControlButton.Interaction, symbol: PanelControlButton.SymbolEffectStyle, action: () -> Void)
+        let forwardConfig: (icon: String, interaction: PanelControlButton.Interaction, symbol: PanelControlButton.SymbolEffectStyle, action: () -> Void)
+
+        switch musicSkipBehavior {
+        case .track:
+            backwardConfig = (
+                icon: "backward.fill",
+                interaction: .nudge(-skipNudge),
+                symbol: .replace,
+                action: { musicManager.previousTrack() }
+            )
+            forwardConfig = (
+                icon: "forward.fill",
+                interaction: .nudge(skipNudge),
+                symbol: .replace,
+                action: { musicManager.nextTrack() }
+            )
+        case .tenSecond:
+            backwardConfig = (
+                icon: "gobackward.10",
+                interaction: .wiggle(.counterClockwise),
+                symbol: .wiggle,
+                action: { musicManager.seek(by: -seekInterval) }
+            )
+            forwardConfig = (
+                icon: "goforward.10",
+                interaction: .wiggle(.clockwise),
+                symbol: .wiggle,
+                action: { musicManager.seek(by: seekInterval) }
+            )
+        }
+
+        return HStack(spacing: spacing) {
+            if let leftControl = controls.left {
+                auxButton(for: leftControl)
+            }
+
+            controlButton(
+                icon: backwardConfig.icon,
+                size: 18,
+                interaction: backwardConfig.interaction,
+                symbolEffect: backwardConfig.symbol,
+                action: backwardConfig.action
+            )
+
+            playPauseButton
+
+            controlButton(
+                icon: forwardConfig.icon,
+                size: 18,
+                interaction: forwardConfig.interaction,
+                symbolEffect: forwardConfig.symbol,
+                action: forwardConfig.action
+            )
+
+            if let rightControl = controls.right {
+                auxButton(for: rightControl)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: alignment)
     }
     
     private var playPauseButton: some View {
-        let frameSize: CGFloat = isExpanded ? 72 : 48
-        let symbolSize: CGFloat = isExpanded ? 30 : 24
+        let frameSize: CGFloat = isExpanded ? 80 : 54
+        let iconName = musicManager.isPlaying ? "pause.fill" : "play.fill"
 
-        return Button(action: {
+        return HoverButton(
+            icon: iconName,
+            iconColor: .white,
+            scale: .large,
+            pressEffect: nil
+        ) {
             registerInteraction()
             musicManager.togglePlay()
-        }) {
-            Image(systemName: musicManager.isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: symbolSize, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: frameSize, height: frameSize)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .frame(width: frameSize, height: frameSize)
     }
     
-    private func controlButton(icon: String, size: CGFloat = 18, isActive: Bool = false, action: @escaping () -> Void) -> some View {
+    private func controlButton(
+        icon: String,
+        size: CGFloat = 18,
+        isActive: Bool = false,
+        activeColor: Color = .red,
+        interaction: PanelControlButton.Interaction = .none,
+        symbolEffect: PanelControlButton.SymbolEffectStyle = .replace,
+        action: @escaping () -> Void
+    ) -> some View {
         let frameSize: CGFloat = isExpanded ? 56 : 32
         let iconSize: CGFloat = isExpanded ? max(size, 24) : size
+        let iconColor = isActive ? activeColor : .white.opacity(0.8)
+        let backgroundOpacity: Double = isActive ? 0.22 : 0.0
 
-        return Button(action: {
+        return PanelControlButton(
+            icon: icon,
+            frameSize: frameSize,
+            iconSize: iconSize,
+            iconColor: iconColor,
+            backgroundOpacity: backgroundOpacity,
+            interaction: interaction,
+            symbolEffect: symbolEffect
+        ) {
             registerInteraction()
             action()
-        }) {
-            Image(systemName: icon)
-                .font(.system(size: iconSize, weight: .medium))
-                .foregroundColor(isActive ? .red : .white.opacity(0.8))
-                .frame(width: frameSize, height: frameSize)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
+    private var mediaOutputControlButton: some View {
+        let frameSize: CGFloat = isExpanded ? 56 : 32
+        let iconSize: CGFloat = isExpanded ? 26 : 18
+
+        return PanelControlButton(
+            icon: mediaOutputIcon,
+            frameSize: frameSize,
+            iconSize: iconSize,
+            iconColor: shouldShowVolumeSlider ? .accentColor : .white.opacity(0.8),
+            backgroundOpacity: shouldShowVolumeSlider ? 0.22 : 0.0,
+            interaction: .none,
+            symbolEffect: .replace,
+            action: toggleVolumeSlider
+        )
+        .accessibilityLabel("Media output")
+    }
+
+    private func lyricsSection(alignment: Alignment) -> some View {
+        let line = musicManager.currentLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        let transition: AnyTransition = .asymmetric(
+            insertion: .move(edge: .bottom).combined(with: .opacity),
+            removal: .move(edge: .top).combined(with: .opacity)
+        )
+
+        return HStack(spacing: 8) {
+            if !line.isEmpty {
+                Image(systemName: "music.note")
+                    .font(.system(size: isExpanded ? 14 : 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .symbolRenderingMode(.monochrome)
+
+                Text(line)
+                    .font(.system(size: isExpanded ? 14 : 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.88))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 6)
+                    .id(line)
+                    .transition(transition)
+            }
+        }
+        .padding(.horizontal, isExpanded ? 10 : 8)
+        .padding(.top, isExpanded ? 12 : 8)
+        .frame(maxWidth: .infinity, alignment: alignment)
+        .animation(.smooth(duration: 0.32), value: line)
+    }
+
+    private var availableAuxControls: [MusicAuxiliaryControl] {
+        MusicAuxiliaryControl.allCases.filter { control in
+            control != .mediaOutput || showMediaOutputControl
+        }
+    }
+
+    private var resolvedAuxControls: (left: MusicAuxiliaryControl?, right: MusicAuxiliaryControl?) {
+        guard showShuffleAndRepeat else { return (nil, nil) }
+
+        let options = availableAuxControls
+        guard !options.isEmpty else { return (nil, nil) }
+
+        let left = options.contains(leftAuxControl) ? leftAuxControl : options.first!
+        var rightCandidate = options.contains(rightAuxControl) ? rightAuxControl : options.first!
+
+        if options.count == 1 {
+            return (left, nil)
+        }
+
+        if rightCandidate == left, let alternative = options.first(where: { $0 != left }) {
+            rightCandidate = alternative
+        }
+
+        if rightCandidate == left {
+            return (left, nil)
+        }
+
+        return (left, rightCandidate)
+    }
+
+    @ViewBuilder
+    private func auxButton(for control: MusicAuxiliaryControl) -> some View {
+        switch control {
+        case .shuffle:
+            controlButton(icon: "shuffle", isActive: musicManager.isShuffled) {
+                musicManager.toggleShuffle()
+            }
+        case .repeatMode:
+            controlButton(icon: repeatIcon, isActive: musicManager.repeatMode != .off) {
+                musicManager.toggleRepeat()
+            }
+        case .mediaOutput:
+            mediaOutputControlButton
+        case .lyrics:
+            controlButton(
+                icon: enableLyrics ? "quote.bubble.fill" : "quote.bubble",
+                isActive: enableLyrics,
+                activeColor: .accentColor
+            ) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    enableLyrics.toggle()
+                }
+            }
+        }
+    }
+
     private var repeatIcon: String {
         switch musicManager.repeatMode {
         case .off: return "repeat"
         case .all: return "repeat"
         case .one: return "repeat.1"
         }
+    }
+
+    private var mediaOutputIcon: String {
+        routeManager.activeDevice?.iconName ?? "speaker.wave.2"
+    }
+
+    private var volumeSlider: some View {
+        HStack(spacing: 14) {
+            Image(systemName: volumeIconName)
+                .font(.system(size: isExpanded ? 16 : 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.8))
+
+            Slider(
+                value: Binding(
+                    get: { Double(volumeModel.level) },
+                    set: { newValue in
+                        registerInteraction()
+                        volumeModel.setVolume(Float(newValue))
+                    }
+                ),
+                in: 0 ... 1
+            )
+            .tint(sliderColor)
+
+            Text(volumePercentage)
+                .font(.system(size: isExpanded ? 12 : 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.7))
+                .frame(width: 48, alignment: .trailing)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: isExpanded ? 16 : 12, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private var shouldShowVolumeSlider: Bool {
+        showMediaOutputControl && isVolumeSliderVisible
+    }
+
+    private var sliderExtraHeight: CGFloat {
+        sliderHeight(forExpanded: isExpanded, visible: shouldShowVolumeSlider)
+    }
+
+    private var lyricsExtraHeight: CGFloat {
+        lyricsHeight(forExpanded: isExpanded, enabled: enableLyrics)
+    }
+
+    private var totalExtraHeight: CGFloat {
+        sliderExtraHeight + lyricsExtraHeight
+    }
+
+    private func lyricsHeight(forExpanded expanded: Bool, enabled: Bool) -> CGFloat {
+        guard enabled else { return 0 }
+        return expanded ? expandedLyricsExtraHeight : collapsedLyricsExtraHeight
+    }
+
+    private func panelAdditionalHeight(forExpanded expanded: Bool) -> CGFloat {
+        sliderHeight(forExpanded: expanded, visible: shouldShowVolumeSlider) +
+        lyricsHeight(forExpanded: expanded, enabled: enableLyrics)
+    }
+
+    private func updatePanelSize(animated: Bool = true) {
+        LockScreenPanelManager.shared.updatePanelSize(
+            expanded: isExpanded,
+            additionalHeight: panelAdditionalHeight(forExpanded: isExpanded),
+            animated: animated
+        )
+    }
+
+    private var volumeIconName: String {
+        if volumeModel.isMuted || volumeModel.level <= 0.001 {
+            return "speaker.slash.fill"
+        } else if volumeModel.level < 0.33 {
+            return "speaker.wave.1.fill"
+        } else if volumeModel.level < 0.66 {
+            return "speaker.wave.2.fill"
+        }
+        return "speaker.wave.3.fill"
+    }
+
+    private var volumePercentage: String {
+        "\(Int(round(volumeModel.level * 100)))%"
+    }
+
+    private func toggleVolumeSlider() {
+        guard showMediaOutputControl else {
+            isVolumeSliderVisible = false
+            return
+        }
+
+        registerInteraction()
+        let newState = !isVolumeSliderVisible
+        if newState {
+            routeManager.refreshDevices()
+        }
+
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+            isVolumeSliderVisible = newState
+        }
+
+        updatePanelSize()
+    }
+
+    private func sliderHeight(forExpanded expanded: Bool, visible: Bool) -> CGFloat {
+        guard visible else { return 0 }
+        return expanded ? expandedSliderExtraHeight : collapsedSliderExtraHeight
     }
 
     @ViewBuilder
@@ -418,8 +711,8 @@ struct LockScreenMusicPanel: View {
         if #available(macOS 26.0, *) {
             RoundedRectangle(cornerRadius: panelCornerRadius)
                 .glassEffect(
-                    .regular
-                        .tint(Color.white.opacity(0.12))
+                    .clear
+                        //.tint(Color.white.opacity(0.12))
                         .interactive(),
                     in: .rect(cornerRadius: panelCornerRadius)
                 )
@@ -446,8 +739,8 @@ struct LockScreenMusicPanel: View {
                 if #available(macOS 26.0, *) {
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .glassEffect(
-                            .regular
-                                .tint(Color.white.opacity(0.16))
+                            .clear
+                                //.tint(Color.white.opacity(0.16))
                                 .interactive(),
                             in: .rect(cornerRadius: cornerRadius)
                         )
@@ -488,5 +781,125 @@ struct LockScreenMusicPanel: View {
         formatter.dateFormat = "HH:mm:ss.SSS"
         let styleDescriptor = usesLiquidGlass ? "Liquid Glass" : "Frosted"
         print("[\(formatter.string(from: Date()))] LockScreenMusicPanel: \(event) – \(styleDescriptor)")
+    }
+}
+
+private struct PanelControlButton: View {
+    let icon: String
+    let frameSize: CGFloat
+    let iconSize: CGFloat
+    let iconColor: Color
+    let backgroundOpacity: Double
+    let interaction: Interaction
+    let symbolEffect: SymbolEffectStyle
+    let action: () -> Void
+
+    @State private var isHovering = false
+    @State private var pressOffset: CGFloat = 0
+    @State private var rotationAngle: Double = 0
+    @State private var wiggleToken: Int = 0
+
+    var body: some View {
+        Button(action: {
+            triggerPressEffect()
+            action()
+        }) {
+            RoundedRectangle(cornerRadius: frameSize / 2, style: .continuous)
+                .fill(backgroundColor)
+                .overlay(
+                    iconView
+                )
+        }
+        .frame(width: frameSize, height: frameSize)
+        .buttonStyle(PlainButtonStyle())
+        .offset(x: pressOffset)
+        .rotationEffect(.degrees(rotationAngle))
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.24)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    private var backgroundColor: Color {
+        let hoveredOpacity = max(backgroundOpacity + 0.08, 0.18)
+        let appliedOpacity = isHovering ? hoveredOpacity : backgroundOpacity
+        return Color.white.opacity(min(appliedOpacity, 0.32))
+    }
+
+    private func triggerPressEffect() {
+        switch interaction {
+        case .none:
+            return
+        case .nudge(let amount):
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
+                pressOffset = amount
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                    pressOffset = 0
+                }
+            }
+        case .wiggle(let direction):
+            guard #available(macOS 14.0, *) else { return }
+            wiggleToken += 1
+            let angle: Double = direction == .clockwise ? 10 : -10
+
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.5)) {
+                rotationAngle = angle
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                    rotationAngle = 0
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var iconView: some View {
+        let base = Image(systemName: icon)
+            .font(.system(size: iconSize, weight: .medium))
+            .foregroundStyle(iconColor)
+
+        switch symbolEffect {
+        case .replace:
+            base.contentTransition(.symbolEffect(.replace))
+        case .replaceAndBounce:
+            if #available(macOS 14.0, *) {
+                base
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.bounce, value: icon)
+            } else {
+                base.contentTransition(.symbolEffect(.replace))
+            }
+        case .wiggle:
+            if #available(macOS 14.0, *) {
+                base
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.wiggle.byLayer, options: .nonRepeating, value: wiggleToken)
+            } else {
+                base.contentTransition(.symbolEffect(.replace))
+            }
+        }
+    }
+
+    enum Interaction {
+        case none
+        case nudge(CGFloat)
+        case wiggle(WiggleDirection)
+    }
+
+    enum SymbolEffectStyle {
+        case replace
+        case replaceAndBounce
+        case wiggle
+    }
+
+    enum WiggleDirection {
+        case clockwise
+        case counterClockwise
     }
 }

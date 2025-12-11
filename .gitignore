@@ -1,6 +1,6 @@
-# Zed Configuration
+# xcede
+.xcede/
 .xcrc
-.xcede
 buildServer.json
 
 .DS_Store
@@ -15,7 +15,7 @@ buildServer.json
 *.xctest
 *.xcuserdata
 *.xcodeproj/xcshareddata/WorkspaceSettings.xcsettings
-
+*.xcsettings
 # CocoaPods
 Pods/
 podfile.lock
@@ -34,6 +34,7 @@ DerivedData/
 build/
 *.app
 *.dSYM
+*.dmg
 
 # Temporary files
 *.swp
@@ -152,3 +153,7 @@ borrowing/
 MoveToSky.xcodeproj
 /MoveToSky/
 mew-notch/
+
+/References/
+/builds/
+/appdmg.json

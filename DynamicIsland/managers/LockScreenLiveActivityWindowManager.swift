@@ -9,6 +9,7 @@ import AppKit
 import Defaults
 import SkyLightWindow
 import SwiftUI
+import QuartzCore
 
 @MainActor
 class LockScreenLiveActivityWindowManager {
@@ -21,8 +22,12 @@ class LockScreenLiveActivityWindowManager {
     private let overlayModel = LockScreenLiveActivityOverlayModel()
     private let overlayAnimator = LockIconAnimator(initiallyLocked: LockScreenManager.shared.isLocked)
     private weak var viewModel: DynamicIslandViewModel?
+    private var screenChangeObserver: NSObjectProtocol?
+    private var workspaceObservers: [NSObjectProtocol] = []
 
-    private init() {}
+    private init() {
+        registerScreenChangeObservers()
+    }
 
     private func timestamp() -> String {
         let formatter = DateFormatter()
@@ -69,6 +74,8 @@ class LockScreenLiveActivityWindowManager {
         window.alphaValue = 0
         window.animationBehavior = .none
 
+        ScreenCaptureVisibilityManager.shared.register(window, scope: .entireInterface)
+
         self.window = window
         self.hasDelegated = false
         return window
@@ -91,6 +98,45 @@ class LockScreenLiveActivityWindowManager {
         }
 
         return (notchSize, screen)
+    }
+
+    private func registerScreenChangeObservers() {
+        screenChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleScreenGeometryChange(reason: "screen-parameters")
+        }
+
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        let wakeObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleScreenGeometryChange(reason: "screens-did-wake")
+        }
+        workspaceObservers = [wakeObserver]
+    }
+
+    private func handleScreenGeometryChange(reason: String) {
+        guard let window else { return }
+        guard window.isVisible || window.alphaValue > 0.01 else { return }
+        guard let context = lockContext() else { return }
+
+        let windowSize = windowSize(for: context.notchSize)
+        let targetFrame = frame(for: windowSize, on: context.screen)
+        if window.frame != targetFrame {
+            window.setFrame(targetFrame, display: true)
+        }
+
+        if let hostingView {
+            hostingView.frame = CGRect(origin: .zero, size: targetFrame.size)
+            hostingView.rootView = LockScreenLiveActivityOverlay(model: overlayModel, animator: overlayAnimator, notchSize: context.notchSize)
+        }
+
+        print("[\(timestamp())] LockScreenLiveActivityWindowManager: realigned window due to \(reason)")
     }
 
     private func present(notchSize: CGSize, on screen: NSScreen) {
@@ -165,9 +211,7 @@ class LockScreenLiveActivityWindowManager {
         overlayAnimator.update(isLocked: false)
 
         hideTask = Task { [weak self] in
-            //try? await Task.sleep(for: .milliseconds(450))
-            try? await Task.sleep(for: .seconds(max(Defaults[.waitInterval], 0.7)))
-            //try? await Task.sleep(for: .seconds(1.0))
+            try? await Task.sleep(for: .seconds(LockScreenAnimationTimings.unlockCollapse))
             guard let self, !Task.isCancelled else { return }
             await MainActor.run {
                 self.hideWithAnimation()
@@ -185,17 +229,18 @@ class LockScreenLiveActivityWindowManager {
     private func hideWithAnimation() {
         guard let window else { return }
 
-        withAnimation(.easeInOut(duration: 0.18)) {
+        withAnimation(.smooth(duration: LockScreenAnimationTimings.unlockCollapse)) {
             overlayModel.opacity = 0
             overlayModel.scale = 0.7
         }
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
+            context.duration = LockScreenAnimationTimings.unlockCollapse
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = 0
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + LockScreenAnimationTimings.unlockCollapse + 0.02) {
             window.orderOut(nil)
         }
 

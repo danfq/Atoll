@@ -59,6 +59,20 @@ struct DynamicNotchApp: App {
             .keyboardShortcut(KeyEquivalent("Q"), modifiers: .command)
         }
     }
+
+    var commands: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                SettingsWindowController.shared.showWindow()
+            }
+        }
+    }
+}
+
+extension AppDelegate {
+    static var shared: AppDelegate? {
+        NSApplication.shared.delegate as? AppDelegate
+    }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -75,7 +89,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let dndManager = DoNotDisturbManager.shared  // NEW: DND detection
     let bluetoothAudioManager = BluetoothAudioManager.shared  // NEW: Bluetooth audio detection
     let idleAnimationManager = IdleAnimationManager.shared  // NEW: Custom idle animations
+    let downloadManager = DownloadManager.shared  // NEW: Chromium downloads detection
     let lockScreenPanelManager = LockScreenPanelManager.shared  // NEW: Lock screen music panel
+    let systemTimerBridge = SystemTimerBridge.shared
     var closeNotchWorkItem: DispatchWorkItem?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
@@ -357,8 +373,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-
-        coordinator.setupWorkersNotificationObservers()
         LockScreenLiveActivityWindowManager.shared.configure(viewModel: vm)
         LockScreenManager.shared.configure(viewModel: vm)
 
@@ -374,6 +388,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Setup ScreenRecording Manager
         if Defaults[.enableScreenRecordingDetection] {
             ScreenRecordingManager.shared.startMonitoring()
+        }
+        
+        // Setup Do Not Disturb Manager
+        if Defaults[.enableDoNotDisturbDetection] {
+            dndManager.startMonitoring()
         }
 
         // Setup Privacy Indicator Manager (camera and microphone monitoring)
@@ -487,10 +506,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(onScreenUnlocked(_:)),
             name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"), object: nil)
 
-        KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
+        _ = KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
             guard let self = self else { return }
-
-            // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
 
             self.coordinator.toggleSneakPeek(
@@ -500,10 +517,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
-        KeyboardShortcuts.onKeyDown(for: .toggleNotchOpen) { [weak self] in
+        _ = KeyboardShortcuts.onKeyDown(for: .toggleNotchOpen) { [weak self] in
             guard let self = self else { return }
-
-            // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
 
             let mouseLocation = NSEvent.mouseLocation
@@ -566,65 +581,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ClipboardManager.shared.startMonitoring()
             }
 
-            // Handle keyboard shortcut based on display mode
             switch Defaults[.clipboardDisplayMode] {
             case .panel:
                 ClipboardPanelManager.shared.toggleClipboardPanel()
             case .popover:
-                // For popover mode, first ensure notch is open, then toggle popover
-
-                // If notch is closed, open it first
                 if self.vm.notchState == .closed {
                     self.vm.open()
-                    // Wait a moment for the notch to open, then show popover
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         NotificationCenter.default.post(name: NSNotification.Name("ToggleClipboardPopover"), object: nil)
                     }
                 } else {
-                    // Notch is already open, toggle popover immediately
                     NotificationCenter.default.post(name: NSNotification.Name("ToggleClipboardPopover"), object: nil)
                 }
             }
         }
 
-        KeyboardShortcuts.onKeyDown(for: .colorPickerPanel) { [weak self] in
-            guard let self = self else { return }
-
-            // Only execute if shortcuts are enabled
+        _ = KeyboardShortcuts.onKeyDown(for: .colorPickerPanel) {
             guard Defaults[.enableShortcuts] else { return }
-
-            // Only open color picker panel if the feature is enabled
             guard Defaults[.enableColorPickerFeature] else { return }
-
-            // Toggle color picker panel
             ColorPickerPanelManager.shared.toggleColorPickerPanel()
         }
 
-        KeyboardShortcuts.onKeyDown(for: .screenAssistantPanel) { [weak self] in
+        _ = KeyboardShortcuts.onKeyDown(for: .screenAssistantPanel) { [weak self] in
             guard let self = self else { return }
-
-            // Only execute if shortcuts are enabled
             guard Defaults[.enableShortcuts] else { return }
-
-            // Only open screen assistant if the feature is enabled
             guard Defaults[.enableScreenAssistant] else { return }
 
-            // Handle keyboard shortcut based on display mode
             switch Defaults[.screenAssistantDisplayMode] {
             case .panel:
                 ScreenAssistantPanelManager.shared.toggleScreenAssistantPanel()
-            case .notch:
-                // For notch mode, first ensure notch is open, then toggle new view
-
-                // If notch is closed, open it first
+            case .popover:
                 if self.vm.notchState == .closed {
                     self.vm.open()
-                    // Wait a moment for the notch to open, then show popover
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         NotificationCenter.default.post(name: NSNotification.Name("ToggleScreenAssistantPopover"), object: nil)
                     }
                 } else {
-                    // Notch is already open, toggle popover immediately
                     NotificationCenter.default.post(name: NSNotification.Name("ToggleScreenAssistantPopover"), object: nil)
                 }
             }
@@ -673,6 +665,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await LockScreenWeatherManager.shared.refresh(force: true)
             }
         }
+
+        // Warm up the lock screen timer widget manager so it can observe timer/default
+        // changes immediately instead of waiting for the first lock event.
+        let timerWidgetManager = LockScreenTimerWidgetManager.shared
+        timerWidgetManager.handleLockStateChange(isLocked: LockScreenManager.shared.currentLockStatus)
     }
 
     func playWelcomeSound() {
@@ -819,6 +816,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ))
             window.isRestorable = false
             window.identifier = NSUserInterfaceItemIdentifier("OnboardingWindow")
+
+            ScreenCaptureVisibilityManager.shared.register(window, scope: .panelsOnly)
 
             onboardingWindowController = NSWindowController(window: window)
         }

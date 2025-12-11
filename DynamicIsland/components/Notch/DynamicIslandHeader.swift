@@ -14,7 +14,9 @@ struct DynamicIslandHeader: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
     @ObservedObject var clipboardManager = ClipboardManager.shared
-    @ObservedObject var tvm = TrayDrop.shared
+    @ObservedObject var shelfState = ShelfStateViewModel.shared
+    @ObservedObject var timerManager = TimerManager.shared
+    @ObservedObject var doNotDisturbManager = DoNotDisturbManager.shared
     @State private var showClipboardPopover = false
     @State private var showColorPickerPopover = false
 
@@ -22,10 +24,9 @@ struct DynamicIslandHeader: View {
         HStack(spacing: 0) {
             if !Defaults[.enableMinimalisticUI] {
                 HStack {
-                    if (!tvm.isEmpty || coordinator.alwaysShowTabs) && Defaults[.dynamicShelf] {
+                    let shouldShowTabs = coordinator.alwaysShowTabs || vm.notchState == .open || !shelfState.items.isEmpty
+                    if shouldShowTabs {
                         TabSelectionView()
-                    } else if vm.notchState == .open {
-                        EmptyView()
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -140,7 +141,37 @@ struct DynamicIslandHeader: View {
                             }
                         }
                     }
-
+                    
+                    if Defaults[.enableTimerFeature] && timerDisplayMode == .popover {
+                        Button(action: {
+                            withAnimation(.smooth) {
+                                showTimerPopover.toggle()
+                            }
+                        }) {
+                            Capsule()
+                                .fill(.black)
+                                .frame(width: 30, height: 30)
+                                .overlay {
+                                    Image(systemName: "timer")
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .imageScale(.medium)
+                                }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .popover(isPresented: $showTimerPopover, arrowEdge: .bottom) {
+                            TimerPopover()
+                        }
+                        .onChange(of: showTimerPopover) { isActive in
+                            vm.isTimerPopoverActive = isActive
+                            if !isActive {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    vm.shouldRecheckHover.toggle()
+                                }
+                            }
+                        }
+                    }
+                    
                     if Defaults[.settingsIconInNotch] {
                         Button(action: {
                             SettingsWindowController.shared.showWindow()
@@ -159,11 +190,20 @@ struct DynamicIslandHeader: View {
                     }
 
                     // Screen Recording Indicator
-                    if Defaults[.enableScreenRecordingDetection] && Defaults[.showRecordingIndicator] {
+                    if Defaults[.enableScreenRecordingDetection] && Defaults[.showRecordingIndicator] && !shouldSuppressStatusIndicators {
                         RecordingIndicator()
                             .frame(width: 30, height: 30) // Same size as other header elements
                     }
 
+                    if Defaults[.enableDoNotDisturbDetection]
+                        && Defaults[.showDoNotDisturbIndicator]
+                        && doNotDisturbManager.isDoNotDisturbActive
+                        && !shouldSuppressStatusIndicators {
+                        FocusIndicator()
+                            .frame(width: 30, height: 30)
+                            .transition(.opacity)
+                    }
+                    
                     if Defaults[.showBatteryIndicator] {
                         DynamicIslandBatteryView(
                             batteryWidth: 30,
@@ -204,6 +244,28 @@ struct DynamicIslandHeader: View {
                 showClipboardPopover.toggle()
             }
         }
+        .onChange(of: enableTimerFeature) { _, newValue in
+            if !newValue {
+                showTimerPopover = false
+                vm.isTimerPopoverActive = false
+            }
+        }
+        .onChange(of: timerDisplayMode) { _, mode in
+            if mode == .tab {
+                showTimerPopover = false
+                vm.isTimerPopoverActive = false
+            }
+        }
+    }
+}
+
+private extension DynamicIslandHeader {
+    var shouldSuppressStatusIndicators: Bool {
+        Defaults[.settingsIconInNotch]
+            && Defaults[.enableClipboardManager]
+            && Defaults[.showClipboardIcon]
+            && Defaults[.enableColorPickerFeature]
+            && Defaults[.enableTimerFeature]
     }
 }
 
